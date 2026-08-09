@@ -10,6 +10,10 @@ This patch allows you to quickly flip back and forth through the book, with the 
 * **Quick Access Toolbar:** Top navigation bar with direct buttons for Home, Settings, Bookmarks, Table of Contents, and Font Options. 
 * **Progress & Info Bar:** Includes an interactive slider, chapter title, and a precise percentage/page counter. You can algo go to the next/previous chapter with the (>>/<<) buttons next to the chapter title.
 
+> **🌟 NEW: UI Scaling**
+> Change `CUSTOM_UI_SCALE = 1.0` inside the `.lua` file to resize the menu (e.g., `0.8` makes it 20% smaller).
+> You MUST disabled any old or duplicate `.lua` scrubber/browser files from your KOReader folder before installing this. 
+
 @ *Credits & Acknowledgments* 
 * **Zen UI Plugin:** Inspired by the clean, minimal aesthetic of the **Zen UI** plugin (`anthonygress/zen_ui.koplugin`).
 * Built upon KOReader's core architecture and community browser components.
