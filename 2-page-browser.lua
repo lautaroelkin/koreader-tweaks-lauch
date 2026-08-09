@@ -13,6 +13,9 @@
     - RAM Micro-Nap & Timeout Extension: Pausas imperceptibles y 6.9 segundos de procesado.
     - Title Formatting: Título a la izquierda, con pseudo-bold forzado y márgenes balanceados.
     - D-Pad Chapter Navigation: Flecha arriba avanza de capítulo, flecha abajo retrocede de capítulo.
+    - Swipe Down to Close: Soporte para cerrar el widget deslizando hacia abajo (swipe simple o multi).
+    - Zombie Widget Fix: Aniquilación total de hilos en segundo plano al cerrar el menú para evitar páginas en blanco.
+    - Sync Redraw Fix: Se eliminó el salto condicional de async_response para forzar el dibujado de imágenes en caché.
 ]]--
 
 local Blitbuffer      = require("ffi/blitbuffer")
@@ -212,13 +215,11 @@ function PageScrubber:init()
         return title or ""
     end
 
-    -- Limita el ancho del título para que no pise la X ni los botones
     self.tw_booktitle = TextWidget:new{
         text = getBookTitle(), face = self.font_title, fgcolor = Blitbuffer.COLOR_BLACK,
         max_width = sw - pad * 3 - Screen:scaleBySize(44), 
     }
     
-    -- Ajuste fino de los márgenes del título para equilibrar espacios
     local title_margin_top = Screen:scaleBySize(14)
     local title_margin_bot = Screen:scaleBySize(8)
     local title_h = self.tw_booktitle:getSize().h
@@ -374,7 +375,9 @@ function PageScrubber:init()
 
     if self._grid_disabled then
         self.ges_events = {
-            Tap = { GestureRange:new{ ges = "tap", range = self.dimen } },
+            Tap         = { GestureRange:new{ ges = "tap",        range = self.dimen } },
+            Swipe       = { GestureRange:new{ ges = "swipe",      range = self.dimen } },
+            MultiSwipe  = { GestureRange:new{ ges = "multiswipe", range = self.dimen } },
         }
     else
         self.ges_events = {
@@ -382,6 +385,7 @@ function PageScrubber:init()
             Pan         = { GestureRange:new{ ges = "pan",          range = self.dimen } },
             PanRelease  = { GestureRange:new{ ges = "pan_release",  range = self.dimen } },
             Swipe       = { GestureRange:new{ ges = "swipe",        range = self.dimen } },
+            MultiSwipe  = { GestureRange:new{ ges = "multiswipe",   range = self.dimen } },
             Hold        = { GestureRange:new{ ges = "hold",         range = self.dimen } },
             HoldRelease = { GestureRange:new{ ges = "hold_release", range = self.dimen } },
             Release     = { GestureRange:new{ ges = "release",      range = self.dimen } },
@@ -498,7 +502,7 @@ function PageScrubber:_updateGridPages()
     logger.info("page-scrubber: nuevo batch", batch_id, "cur_page", self._cur_page, "faltan", #missing)
 
     local function requestOne(pos)
-        if self._grid_batch_id ~= batch_id then return end
+        if self._closing or self._grid_batch_id ~= batch_id then return end
 
         local idx = missing[pos]
         if not idx then
@@ -526,17 +530,20 @@ function PageScrubber:_updateGridPages()
             if advanced then return end
             advanced = true
             self._tasks_in_flight = math.max(0, self._tasks_in_flight - 1)
-            UIManager:scheduleIn(0.15, function() requestOne(pos + 1) end)
+            if not self._closing then
+                UIManager:scheduleIn(0.15, function() requestOne(pos + 1) end)
+            end
         end
 
         local retry_count = 0
         local MAX_RETRIES = 1
 
         local function dispatch()
-            if self._grid_batch_id ~= batch_id then return end
+            if self._closing or self._grid_batch_id ~= batch_id then return end
 
             local timed_out = false
             UIManager:scheduleIn(6.9, function()
+                if self._closing then return end
                 if not advanced and self._grid_batch_id == batch_id then
                     timed_out = true
                     logger.warn("page-scrubber: TIMEOUT esperando thumbnail de pagina", req_page, "batch", batch_id)
@@ -549,10 +556,12 @@ function PageScrubber:_updateGridPages()
 
             local delayed = thumbnail:getPageThumbnail(req_page, self._thumb_req_w, self._thumb_req_h, batch_id,
                 function(tile, resp_batch_id, async_response)
+                    if self._closing then return end
                     if timed_out then return end
-                    if resp_batch_id ~= batch_id or self._grid_batch_id ~= batch_id then
+                    
+                    if self._grid_batch_id ~= batch_id then
                         logger.info("page-scrubber: descartando respuesta vieja pagina", req_page,
-                            "resp_batch", resp_batch_id, "batch_actual", self._grid_batch_id)
+                            "batch_actual", self._grid_batch_id)
                         return
                     end
 
@@ -571,7 +580,9 @@ function PageScrubber:_updateGridPages()
                                             and (self._grid_item_w + 1) or self._grid_item_w
                         
                         logger.warn("page-scrubber: reintentando pagina", req_page, "intento", retry_count)
-                        UIManager:scheduleIn(0.3, dispatch)
+                        if not self._closing then
+                            UIManager:scheduleIn(0.3, dispatch)
+                        end
                         return
                     end
 
@@ -607,9 +618,9 @@ function PageScrubber:_updateGridPages()
                             slot.loading = false
                             slot.error = true
                         end
-                        if async_response then
-                            UIManager:setDirty(self, "ui", self:_gridSlotDimen(idx))
-                        end
+                        -- FIX VITAL: Se eliminó la validación 'if async_response then' para que la UI 
+                        -- SIEMPRE se ensucie y se redibuje, incluso cuando la imagen sale del caché instantáneamente.
+                        UIManager:setDirty(self, "ui", self:_gridSlotDimen(idx))
                     end
 
                     advance()
@@ -1098,6 +1109,18 @@ function PageScrubber:onSwipe(_, ges)
     elseif ges.direction == "east" then
         self:_previewPage(self._cur_page - 1)
         return true
+    elseif ges.direction == "south" then
+        self:_closeReturn()
+        return true
+    end
+    return false
+end
+
+function PageScrubber:onMultiSwipe(_, ges)
+    if self._closing then return true end
+    if ges.direction == "south" then
+        self:_closeReturn()
+        return true
     end
     return false
 end
@@ -1133,6 +1156,7 @@ function PageScrubber:onRelease(_, ges)
 end
 
 function PageScrubber:onCloseWidget()
+    self._closing = true
     self:_cancelHold()
 
     if not self._grid_disabled then
