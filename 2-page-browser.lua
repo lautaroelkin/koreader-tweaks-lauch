@@ -1,30 +1,24 @@
 --[[
     2-page-scrubber.lua
-    Page scrubber overlay (Kindle E-ink optimized slow hold and loop protection)
-    with an inline page-thumbnail grid in the central zone, between the top
-    and bottom bars.
-
-    We do NOT reuse KOReader's PageBrowserWidget itself: that widget hardcodes
-    Screen:getWidth()/Screen:getHeight() throughout its init, gesture handlers
-    (onTap/onSwipe/onPinch/onSpread/onHold) and TOC-ribbon math, builds its own
-    fullscreen TitleBar and its own bottom BookMapRow ribbon, and none of that
-    is expressed in terms of a configurable self.dimen. Forcing it into a
-    mid-screen rectangle would mean monkey-patching every one of those
-    Screen:getWidth/getHeight() call sites — fragile across KOReader versions,
-    and exactly the kind of intervention that risks buffer corruption / a lost
-    widget hierarchy on async thumbnail rendering.
-
-    Instead we call the same underlying service PageBrowserWidget itself uses
-    to fetch bitmaps -- ReaderThumbnail's ui.thumbnail:getPageThumbnail(page,
-    w, h, batch_id, callback) -- and paint the resulting blitbuffers ourselves,
-    directly into our own rectangle, with our own tap handling and our own
-    memory cleanup. Standard rectangular tiles, no rounded masks, no floating
-    windows -- just our own layout instead of the native one's.
+    Page scrubber overlay (Kindle E-ink optimized)
+    - Sacred Center Logic: Current page is strictly locked to the center slot (idx 2).
+    - Semaphore Protection: Prevents CBZ cache corruption during fast-tapping.
+    - Original Fluid Slider: Responsive dragging restored.
+    - Swipe Filter: Ignores swipe gestures on the bottom bar to prevent slider interference.
+    - Custom UI: Home button included, bookmark icon updated, custom layout order.
+    - Soft Retries: Evita limpiar DocCache durante errores para no saturar la RAM.
+    - Spread Fix: Eliminado el falso positivo de aspecto que bloqueaba páginas dobles u horizontales.
+    - Compact 3-Page Grid: Las 3 páginas cargan completas a lo ancho, achicadas para evitar desbordes.
+    - Anti-Crash Shield: Purga activa del DocCache tras generar CADA miniatura para evitar OOM.
+    - RAM Micro-Nap & Timeout Extension: Pausas imperceptibles y 6.9 segundos de procesado.
+    - Title Formatting: Título a la izquierda, con pseudo-bold forzado y márgenes balanceados.
+    - D-Pad Chapter Navigation: Flecha arriba avanza de capítulo, flecha abajo retrocede de capítulo.
 ]]--
 
 local Blitbuffer      = require("ffi/blitbuffer")
 local Device          = require("device")
 local Dispatcher      = require("dispatcher")
+local DocCache        = require("document/doccache")
 local Event           = require("ui/event")
 local Font            = require("ui/font")
 local Geom            = require("ui/geometry")
@@ -48,6 +42,8 @@ local function paintPill(bb, px, py, pw, ph, color)
         if rw > 0 then bb:paintRect(px + inset, py + row, rw, 1, color) end
     end
 end
+
+local ENABLE_SWIPE_ANIM_OVERRIDE = true
 
 local function paintCircle(bb, cx, cy, r, color)
     if r <= 0 then return end
@@ -167,19 +163,24 @@ function PageScrubber:init()
     local ui  = self.ui
     local doc = ui.document
 
-    self._old_can_do = Device.canDoSwipeAnimation
-    Device.canDoSwipeAnimation = function() return false end
-    
-    self._saved_swipe_animations = Screen.swipe_animations
-    Screen.swipe_animations = false
+    if ENABLE_SWIPE_ANIM_OVERRIDE then
+        self._old_can_do = Device.canDoSwipeAnimation
+        Device.canDoSwipeAnimation = function() return false end
 
-    self._origin_page = (ui.paging and ui.paging:getCurrentPage()) or (ui.view and ui.view.state and ui.view.state.page) or 1
+        self._saved_swipe_animations = Screen.swipe_animations
+        Screen.swipe_animations = false
+    end
+
+    self._origin_page = (ui.view and ui.view.state and ui.view.state.page) or 1
     self._cur_page    = self._origin_page
     self._total_pages = (doc and doc.getPageCount and doc:getPageCount()) or 1
     self._pressed_btn = nil
     self._closing     = false
     self._hold_token  = 0
     self._hold_active = false
+    
+    self._is_busy     = true
+    self._tasks_in_flight = 0
 
     local sw = Screen:getWidth()
     local sh = Screen:getHeight()
@@ -189,14 +190,46 @@ function PageScrubber:init()
     local top_bar_y = 0
     self._top_bar_dimen = Geom:new{ x = 0, y = top_bar_y, w = sw, h = top_h }
 
-    self.font_ch = Font:getFace("cfont", Screen:scaleBySize(19))
-    self.font_in = Font:getFace("cfont", Screen:scaleBySize(14))
+    self.font_ch    = Font:getFace("cfont", Screen:scaleBySize(19))
+    self.font_title = Font:getFace("cfont", Screen:scaleBySize(16))
+    self.font_info  = Font:getFace("cfont", Screen:scaleBySize(14))
+
+    local function getBookTitle()
+        local title
+        if ui.doc_props and ui.doc_props.title and ui.doc_props.title ~= "" then
+            title = ui.doc_props.title
+        end
+        if not title and ui.document and ui.document.getProps then
+            local ok, props = pcall(function() return ui.document:getProps() end)
+            if ok and props and props.title and props.title ~= "" then
+                title = props.title
+            end
+        end
+        if not title and ui.document and ui.document.file then
+            local base = ui.document.file:match("([^/\\]+)$") or ui.document.file
+            title = base:gsub("%.%w+$", "")
+        end
+        return title or ""
+    end
+
+    -- Limita el ancho del título para que no pise la X ni los botones
+    self.tw_booktitle = TextWidget:new{
+        text = getBookTitle(), face = self.font_title, fgcolor = Blitbuffer.COLOR_BLACK,
+        max_width = sw - pad * 3 - Screen:scaleBySize(44), 
+    }
     
+    -- Ajuste fino de los márgenes del título para equilibrar espacios
+    local title_margin_top = Screen:scaleBySize(14)
+    local title_margin_bot = Screen:scaleBySize(8)
+    local title_h = self.tw_booktitle:getSize().h
+    
+    self._booktitle_y = top_h + title_margin_top
+
     self._cbtn_sz  = Screen:scaleBySize(46)
     self.max_title_w = sw - pad * 6 - self._cbtn_sz * 2
     
     self.tw_chapter  = TextWidget:new{ text = "", face = self.font_ch, fgcolor = Blitbuffer.COLOR_BLACK, max_width = self.max_title_w }
-    self.tw_info     = TextWidget:new{ text = "", face = self.font_in, fgcolor = Blitbuffer.COLOR_DARK_GRAY }
+    self.tw_info     = TextWidget:new{ text = "", face = self.font_info, fgcolor = Blitbuffer.COLOR_DARK_GRAY }
 
     self.tw_chapter:setText(_("—"))
     self.tw_info:setText("100% · 9999 / 9999")
@@ -224,18 +257,48 @@ function PageScrubber:init()
     local bar_y = sh - bar_h
     self._bar_dimen = Geom:new{ x = 0, y = bar_y, w = sw, h = bar_h }
 
-    local grid_y_avail = bar_y - top_h
-    self._grid_dimen = Geom:new{ x = 0, y = top_h, w = sw, h = grid_y_avail }
+    local grid_top = self._booktitle_y + title_h + title_margin_bot
+    local grid_y_avail = bar_y - grid_top
+    self._grid_dimen = Geom:new{ x = 0, y = grid_top, w = sw, h = grid_y_avail }
     self._grid_cols = 3
     self._grid_rows = 1
     self._grid_margin = Screen:scaleBySize(10)
-    self._grid_item_h = grid_y_avail - 2 * self._grid_margin
-    self._grid_item_w = math.floor(self._grid_item_h * sw / sh)
+
+    local is_comic = false
+    do
+        local file = ui.document and ui.document.file
+        local ext = file and file:match("%.([%a%d]+)$")
+        if ext then
+            ext = ext:lower()
+            is_comic = (ext == "cbz" or ext == "cbr" or ext == "cb7" or ext == "cbt")
+        end
+    end
+    self._is_comic = is_comic
+
+    if self._is_comic then
+        self._grid_item_w = math.floor((sw - 2 * self._grid_margin) / 3)
+        self._grid_item_h = math.floor(self._grid_item_w * sh / sw)
+    else
+        self._grid_item_h = grid_y_avail - 2 * self._grid_margin
+        self._grid_item_w = math.floor(self._grid_item_h * sw / sh)
+    end
+
+    self._thumb_req_w = self._grid_item_w
+    self._thumb_req_h = self._grid_item_h
     self._grid_tiles      = {}
     self._grid_start_page = nil
     self._grid_batch_id   = nil
     self._grid_batch_seq  = 0
+    self._grid_instance_id = tostring(os.time()) .. "_" .. tostring(math.random(100000, 999999))
     self._grid_disabled = not (ui.thumbnail and ui.thumbnail.getPageThumbnail)
+
+    self._fallback_prev_dimen = Geom:new{
+        x = 0, y = self._grid_dimen.y, w = math.floor(sw / 3), h = self._grid_dimen.h }
+    self._fallback_next_dimen = Geom:new{
+        x = sw - math.floor(sw / 3), y = self._grid_dimen.y, w = math.floor(sw / 3), h = self._grid_dimen.h }
+    
+    self.tw_fb_l = TextWidget:new{ text = "‹", face = Font:getFace("cfont", Screen:scaleBySize(48)), fgcolor = Blitbuffer.COLOR_BLACK }
+    self.tw_fb_r = TextWidget:new{ text = "›", face = Font:getFace("cfont", Screen:scaleBySize(48)), fgcolor = Blitbuffer.COLOR_BLACK }
 
     self.tw_lib      = TextWidget:new{ text = "\u{F015}", face = Font:getFace("cfont", Screen:scaleBySize(18)), fgcolor = Blitbuffer.COLOR_BLACK }
     self.tw_fn       = TextWidget:new{ text = "⚙",   face = Font:getFace("cfont", Screen:scaleBySize(18)), fgcolor = Blitbuffer.COLOR_BLACK }
@@ -253,7 +316,7 @@ function PageScrubber:init()
     self.tw_ctrl_next = TextWidget:new{ text = "›", face = font_ctrl, fgcolor = Blitbuffer.COLOR_BLACK }
 
     self._slider.on_change = function(v)
-        self:_gotoPage(v)
+        self:_previewPage(v)
     end
 
     self:_updateTexts()
@@ -303,30 +366,44 @@ function PageScrubber:init()
         self.key_events = {
             Close = { { Device.input.group.Back } },
             PrevPage = { { Device.input.group.PgBack } },
-            NextPage = { { Device.input.group.PgFwd } }
+            NextPage = { { Device.input.group.PgFwd } },
+            NextChapterKey = { { Device.input.group.PrevLine } },
+            PrevChapterKey = { { Device.input.group.NextLine } },
         }
     end
 
-    self.ges_events = {
-        Tap         = { GestureRange:new{ ges = "tap",          range = self.dimen } },
-        Pan         = { GestureRange:new{ ges = "pan",          range = self.dimen } },
-        PanRelease  = { GestureRange:new{ ges = "pan_release",  range = self.dimen } },
-        Swipe       = { GestureRange:new{ ges = "swipe",        range = self.dimen } },
-        Hold        = { GestureRange:new{ ges = "hold",         range = self.dimen } },
-        HoldRelease = { GestureRange:new{ ges = "hold_release", range = self.dimen } },
-        Release     = { GestureRange:new{ ges = "release",      range = self.dimen } },
-    }
-
-    if not self._grid_disabled then
-        self:_updateGridPages()
+    if self._grid_disabled then
+        self.ges_events = {
+            Tap = { GestureRange:new{ ges = "tap", range = self.dimen } },
+        }
+    else
+        self.ges_events = {
+            Tap         = { GestureRange:new{ ges = "tap",          range = self.dimen } },
+            Pan         = { GestureRange:new{ ges = "pan",          range = self.dimen } },
+            PanRelease  = { GestureRange:new{ ges = "pan_release",  range = self.dimen } },
+            Swipe       = { GestureRange:new{ ges = "swipe",        range = self.dimen } },
+            Hold        = { GestureRange:new{ ges = "hold",         range = self.dimen } },
+            HoldRelease = { GestureRange:new{ ges = "hold_release", range = self.dimen } },
+            Release     = { GestureRange:new{ ges = "release",      range = self.dimen } },
+        }
     end
 
-    -- Forzar un refresco completo inicial para limpiar el fondo de texto en E-ink
-    UIManager:setDirty(nil, "full")
+    if not self._grid_disabled then
+        local ok_clear, err_clear = pcall(function() DocCache:clear() end)
+        if not ok_clear then
+            logger.warn("page-scrubber: no se pudo limpiar DocCache al abrir:", err_clear)
+        end
+
+        UIManager:scheduleIn(0.15, function()
+            if not self._closing then self:_updateGridPages() end
+        end)
+    end
 end
 
-function PageScrubber:onPrevPage() self:_gotoPage(self._cur_page - 1); return true end
-function PageScrubber:onNextPage() self:_gotoPage(self._cur_page + 1); return true end
+function PageScrubber:onPrevPage() self:_previewPage(self._cur_page - 1); return true end
+function PageScrubber:onNextPage() self:_previewPage(self._cur_page + 1); return true end
+function PageScrubber:onNextChapterKey() self:_nextChapter(); return true end
+function PageScrubber:onPrevChapterKey() self:_prevChapter(); return true end
 
 function PageScrubber:_getChapter(page)
     if self.ui.toc then
@@ -356,43 +433,204 @@ function PageScrubber:_gridSlotDimen(idx)
     local gd, m = self._grid_dimen, self._grid_margin
     local w, h  = self._grid_item_w, self._grid_item_h
     local mid_x = gd.x + math.floor((gd.w - w) / 2)
-    local y     = gd.y + m
+    local y     = gd.y + math.floor((gd.h - h) / 2)
     local offsets = { -(w + m), 0, (w + m) }
     return Geom:new{ x = mid_x + offsets[idx], y = y, w = w, h = h }
 end
 
 function PageScrubber:_updateGridPages()
     if self._grid_disabled or self._closing then return end
+    self._pending_grid_update = false
     local thumbnail = self.ui.thumbnail
 
-    if self._grid_batch_id then
-        thumbnail:cancelPageThumbnailRequests(self._grid_batch_id)
-    end
     self._grid_batch_seq = self._grid_batch_seq + 1
-    local batch_id = "page_scrubber_grid_" .. tostring(self._grid_batch_seq)
+    local batch_id = "page_scrubber_grid_" .. self._grid_instance_id .. "_" .. tostring(self._grid_batch_seq)
     self._grid_batch_id = batch_id
 
     local nb_items = self._grid_cols * self._grid_rows
+    
+    local old_tiles = self._grid_tiles or {}
     self._grid_tiles = {}
-
+    
     for idx = 1, nb_items do
         local page = self._cur_page + (idx - 2)
-        local slot = { page = (page >= 1 and page <= self._total_pages) and page or nil }
-        self._grid_tiles[idx] = slot
-        if slot.page then
-            local delayed = thumbnail:getPageThumbnail(slot.page, self._grid_item_w, self._grid_item_h, batch_id,
+        local valid = page >= 1 and page <= self._total_pages
+        
+        self._grid_tiles[idx] = { 
+            page = valid and page or nil, 
+            loading = valid
+        }
+        
+        if valid then
+            for _, old_slot in pairs(old_tiles) do
+                if old_slot.page == page and old_slot.tile_bb then
+                    self._grid_tiles[idx].tile_bb = old_slot.tile_bb
+                    self._grid_tiles[idx].loading = false
+                    break
+                end
+            end
+        end
+    end
+
+    local request_order = { 2, 1, 3 }
+    local missing = {}
+
+    for _, idx in ipairs(request_order) do
+        local slot = self._grid_tiles[idx]
+        if slot and slot.page and not slot.tile_bb then
+            missing[#missing + 1] = idx
+        end
+    end
+
+    if #missing == 0 then
+        self._is_busy = false
+        self._tasks_in_flight = 0
+        UIManager:setDirty(self, "ui", self._grid_dimen)
+        if self._pending_grid_update and not self._closing then
+            self._pending_grid_update = false
+            self:_updateGridPages()
+        end
+        return
+    end
+
+    self._is_busy = true
+    self._tasks_in_flight = #missing
+    logger.info("page-scrubber: nuevo batch", batch_id, "cur_page", self._cur_page, "faltan", #missing)
+
+    local function requestOne(pos)
+        if self._grid_batch_id ~= batch_id then return end
+
+        local idx = missing[pos]
+        if not idx then
+            self._is_busy = false
+            self._tasks_in_flight = 0
+            if self._closing and self.ui.thumbnail and self.ui.thumbnail.tidyCache then
+                self.ui.thumbnail:tidyCache()
+            end
+            if self._pending_grid_update and not self._closing then
+                self._pending_grid_update = false
+                self:_updateGridPages()
+            end
+            return
+        end
+
+        local slot = self._grid_tiles[idx]
+        local req_page = slot and slot.page
+        if not req_page then
+            requestOne(pos + 1)
+            return
+        end
+
+        local advanced = false
+        local function advance()
+            if advanced then return end
+            advanced = true
+            self._tasks_in_flight = math.max(0, self._tasks_in_flight - 1)
+            UIManager:scheduleIn(0.15, function() requestOne(pos + 1) end)
+        end
+
+        local retry_count = 0
+        local MAX_RETRIES = 1
+
+        local function dispatch()
+            if self._grid_batch_id ~= batch_id then return end
+
+            local timed_out = false
+            UIManager:scheduleIn(6.9, function()
+                if not advanced and self._grid_batch_id == batch_id then
+                    timed_out = true
+                    logger.warn("page-scrubber: TIMEOUT esperando thumbnail de pagina", req_page, "batch", batch_id)
+                    advance()
+                end
+            end)
+
+            logger.info("page-scrubber: pidiendo thumbnail pagina", req_page, "slot", idx,
+                "batch", batch_id, "intento", retry_count)
+
+            local delayed = thumbnail:getPageThumbnail(req_page, self._thumb_req_w, self._thumb_req_h, batch_id,
                 function(tile, resp_batch_id, async_response)
-                    if resp_batch_id ~= self._grid_batch_id then return end
-                    if not tile then return end
-                    self:_setGridTile(idx, tile)
-                    if async_response then
-                        UIManager:setDirty(self, "ui", self:_gridSlotDimen(idx))
+                    if timed_out then return end
+                    if resp_batch_id ~= batch_id or self._grid_batch_id ~= batch_id then
+                        logger.info("page-scrubber: descartando respuesta vieja pagina", req_page,
+                            "resp_batch", resp_batch_id, "batch_actual", self._grid_batch_id)
+                        return
                     end
+
+                    local w, h = nil, nil
+                    if tile and tile.bb then w, h = tile.bb:getWidth(), tile.bb:getHeight() end
+
+                    local corrupted = false
+                    if not tile or not tile.bb or not w or not h or w <= 0 or h <= 0 then
+                        corrupted = true
+                        logger.warn("page-scrubber: thumbnail NULO/invalido pagina", req_page, "batch", batch_id)
+                    end
+
+                    if corrupted and retry_count < MAX_RETRIES then
+                        retry_count = retry_count + 1
+                        self._thumb_req_w = (self._thumb_req_w == self._grid_item_w) 
+                                            and (self._grid_item_w + 1) or self._grid_item_w
+                        
+                        logger.warn("page-scrubber: reintentando pagina", req_page, "intento", retry_count)
+                        UIManager:scheduleIn(0.3, dispatch)
+                        return
+                    end
+
+                    if not corrupted then
+                        logger.info("page-scrubber: thumbnail OK pagina", req_page, w, "x", h,
+                            "async", tostring(async_response))
+
+                        if tile and tile.bb and (w > self._thumb_req_w + 4 or h > self._thumb_req_h + 4) then
+                            local ok_scale, scaled = pcall(function()
+                                return tile.bb:scale(self._thumb_req_w, self._thumb_req_h)
+                            end)
+                            if ok_scale and scaled then
+                                logger.info("page-scrubber: reescalando thumbnail cacheado", w, "x", h,
+                                    "->", self._thumb_req_w, "x", self._thumb_req_h)
+                                tile = { bb = scaled }
+                            else
+                                logger.warn("page-scrubber: no se pudo reescalar thumbnail:", scaled)
+                            end
+                        end
+                    else
+                        logger.warn("page-scrubber: fallo total, pagina", req_page,
+                            "queda marcada como error")
+                    end
+                    
+                    if self._is_comic then
+                        pcall(function() DocCache:clear() end)
+                    end
+
+                    if not self._closing then
+                        if not corrupted and tile then
+                            self:_setGridTile(idx, tile)
+                        elseif corrupted then
+                            slot.loading = false
+                            slot.error = true
+                        end
+                        if async_response then
+                            UIManager:setDirty(self, "ui", self:_gridSlotDimen(idx))
+                        end
+                    end
+
+                    advance()
                 end)
             slot.loading = delayed and true or false
         end
+
+        dispatch()
     end
+
+    requestOne(1)
+
     UIManager:setDirty(self, "ui", self._grid_dimen)
+end
+
+function PageScrubber:_waitForIdle(callback)
+    if not self._is_busy and (self._tasks_in_flight or 0) == 0 then
+        callback()
+        return
+    end
+    UIManager:scheduleIn(0.05, function() self:_waitForIdle(callback) end)
 end
 
 function PageScrubber:_setGridTile(idx, tile)
@@ -414,11 +652,22 @@ function PageScrubber:_paintGrid(bb)
                 local ox = rect.x + math.floor((rect.w - tw) / 2)
                 local oy = rect.y + math.floor((rect.h - th) / 2)
                 bb:blitFrom(slot.tile_bb, ox, oy, 0, 0, tw, th)
+            elseif slot.error then
+                if not self._tw_grid_error then
+                    self._tw_grid_error = TextWidget:new{
+                        text = "!", face = Font:getFace("cfont", Screen:scaleBySize(32)),
+                        fgcolor = Blitbuffer.COLOR_BLACK,
+                    }
+                end
+                local etsz = self._tw_grid_error:getSize()
+                self._tw_grid_error:paintTo(bb, rect.x + math.floor((rect.w - etsz.w) / 2),
+                    rect.y + math.floor((rect.h - etsz.h) / 2))
             elseif slot.loading then
                 bb:paintRect(rect.x + math.floor(rect.w / 2) - 1, rect.y + math.floor(rect.h / 2) - 1,
                     2, 2, Blitbuffer.COLOR_GRAY)
             end
-            local is_cur = (slot.page == self._cur_page)
+            
+            local is_cur = (idx == 2)
             local border = is_cur and Screen:scaleBySize(3) or Screen:scaleBySize(1)
             bb:paintBorder(rect.x, rect.y, rect.w, rect.h, border, Blitbuffer.COLOR_BLACK, 0)
         end
@@ -431,13 +680,43 @@ function PageScrubber:_gotoPage(page)
     self._slider.value = self._cur_page
     self:_updateTexts()
 
-    self.ui:handleEvent(Event:new("GotoPage", self._cur_page))
+    self._nav_token = (self._nav_token or 0) + 1
+    local my_token = self._nav_token
+    local target_page = self._cur_page
+
+    self:_waitForIdle(function()
+        if self._nav_token == my_token then
+            logger.info("page-scrubber: GotoPage real disparado, pagina", target_page)
+            self.ui:handleEvent(Event:new("GotoPage", target_page))
+        else
+            logger.info("page-scrubber: GotoPage descartado (superado por otro toque), pagina", target_page)
+        end
+    end)
 
     if not self._grid_disabled then
         self:_updateGridPages()
     end
 
     UIManager:setDirty(self, "ui", self.dimen)
+end
+
+function PageScrubber:_previewPage(page)
+    if self._closing then return end
+    
+    self._cur_page = math.max(1, math.min(self._total_pages, page))
+    self._slider.value = self._cur_page
+    self:_updateTexts()
+    
+    UIManager:setDirty(self, "ui", self.dimen)
+
+    if self._is_busy then 
+        self._pending_grid_update = true
+        return 
+    end
+
+    if not self._grid_disabled then
+        self:_updateGridPages()
+    end
 end
 
 function PageScrubber:_flashAndDo(btn_id, rect, action_func)
@@ -467,10 +746,31 @@ function PageScrubber:_paintToImpl(bb, x, y)
     bb:paintRect(bd.x, bd.y, bd.w, bd.h, Blitbuffer.COLOR_WHITE)
     bb:paintRect(bd.x, bd.y, bd.w, Screen:scaleBySize(2), Blitbuffer.COLOR_BLACK)
 
+    local title_strip_y = td.y + td.h
+    local title_strip_h = self._grid_dimen.y - title_strip_y
+    bb:paintRect(0, title_strip_y, sw, title_strip_h, Blitbuffer.COLOR_WHITE)
+    
+    -- Título Alineado a la Izquierda y Pseudo-Bold
+    local title_x = pad
+    
+    self.tw_booktitle:paintTo(bb, title_x,     self._booktitle_y)
+    self.tw_booktitle:paintTo(bb, title_x + 1, self._booktitle_y)
+    self.tw_booktitle:paintTo(bb, title_x,     self._booktitle_y + 1)
+    self.tw_booktitle:paintTo(bb, title_x + 1, self._booktitle_y + 1)
+
     if not self._grid_disabled then
         local gd = self._grid_dimen
         bb:paintRect(gd.x, gd.y, gd.w, gd.h, Blitbuffer.COLOR_WHITE)
         self:_paintGrid(bb)
+    else
+        local gd = self._grid_dimen
+        bb:paintRect(gd.x, gd.y, gd.w, gd.h, Blitbuffer.COLOR_WHITE)
+        local pd = self._fallback_prev_dimen
+        local nd = self._fallback_next_dimen
+        local ptsz = self.tw_fb_l:getSize()
+        self.tw_fb_l:paintTo(bb, pd.x + math.floor((pd.w - ptsz.w) / 2), pd.y + math.floor((pd.h - ptsz.h) / 2))
+        local ntsz = self.tw_fb_r:getSize()
+        self.tw_fb_r:paintTo(bb, nd.x + math.floor((nd.w - ntsz.w) / 2), nd.y + math.floor((nd.h - ntsz.h) / 2))
     end
 
     local function drawFloatingBtn(btn_id, dimen, tw)
@@ -483,7 +783,7 @@ function PageScrubber:_paintToImpl(bb, x, y)
             tw.fgcolor = fg_color
             local tsz = tw:getSize()
             local y_offset = 0
-            if tw.text == "\u{F097}" or tw.text == "\u{F02E}" or tw.text == "\u{F015}" then
+            if tw.text == "\u{F097}" or tw.text == "\u{F02E}" then
                 y_offset = Screen:scaleBySize(1)
             elseif tw.text == "‹‹" or tw.text == "››" then
                 y_offset = -Screen:scaleBySize(1)
@@ -494,6 +794,7 @@ function PageScrubber:_paintToImpl(bb, x, y)
 
         if btn_id == "x" or btn_id == "bm" or btn_id == "toc" or btn_id == "aa" or btn_id == "fn" or btn_id == "lib" then
             local bg_color = is_pressed and Blitbuffer.COLOR_BLACK or nil
+            fg_color = is_pressed and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK
             
             if bg_color then
                 paintRoundRect(bb, dimen.x, dimen.y, dimen.w, dimen.h, Screen:scaleBySize(8), bg_color)
@@ -588,8 +889,8 @@ function PageScrubber:_startHold(action)
     self._hold_token = self._hold_token + 1
     local current_token = self._hold_token
     
-    local delay = 1.1
-    local max_steps = 25
+    local delay = 0.55
+    local max_steps = 20
     local steps = 0
 
     local function rep()
@@ -606,13 +907,13 @@ function PageScrubber:_startHold(action)
         
         if action == "prev" then 
             if self._cur_page > 1 then 
-                self:_gotoPage(self._cur_page - 1) 
+                self:_previewPage(self._cur_page - 1) 
             else 
                 self:_cancelHold(); return 
             end
         elseif action == "next" then 
             if self._cur_page < self._total_pages then 
-                self:_gotoPage(self._cur_page + 1) 
+                self:_previewPage(self._cur_page + 1) 
             else 
                 self:_cancelHold(); return 
             end
@@ -637,7 +938,7 @@ function PageScrubber:_prevChapter()
     local ui = self.ui
     if ui.toc then
         local p = ui.toc:getPreviousChapter(self._cur_page)
-        if p then self:_gotoPage(p) end
+        if p then self:_previewPage(p) end
     end
 end
 
@@ -645,7 +946,7 @@ function PageScrubber:_nextChapter()
     local ui = self.ui
     if ui.toc then
         local p = ui.toc:getNextChapter(self._cur_page)
-        if p then self:_gotoPage(p) end
+        if p then self:_previewPage(p) end
     end
 end
 
@@ -661,16 +962,16 @@ function PageScrubber:onTap(_, ges)
         self:_flashAndDo("fn", self._fn_dimen, function() self:_closeAndOpenMenu() end)
         return true
     end
-    if self._bm_dimen and ges.pos:intersectWith(self._bm_dimen) then
-        self:_flashAndDo("bm", self._bm_dimen, function() self:_closeAndShow("ShowBookmark") end)
-        return true
-    end
     if self._toc_dimen and ges.pos:intersectWith(self._toc_dimen) then
         self:_flashAndDo("toc", self._toc_dimen, function() self:_closeAndShow("ShowToc") end)
         return true
     end
     if self._aa_dimen and ges.pos:intersectWith(self._aa_dimen) then
         self:_flashAndDo("aa", self._aa_dimen, function() self:_closeAndShow("ShowConfigMenu") end)
+        return true
+    end
+    if self._bm_dimen and ges.pos:intersectWith(self._bm_dimen) then
+        self:_flashAndDo("bm", self._bm_dimen, function() self:_closeAndShow("ShowBookmark") end)
         return true
     end
     if self._x_dimen and ges.pos:intersectWith(self._x_dimen) then
@@ -681,10 +982,8 @@ function PageScrubber:onTap(_, ges)
     if self._ctrl_prev_dimen and ges.pos:intersectWith(self._ctrl_prev_dimen) then
         self:_flashAndDo("ctrl_prev", self._ctrl_prev_dimen, function()
             self.ui:handleEvent(Event:new("GotoPreviousBookmarkFromPage", false))
-            local new_page = (self.ui.paging and self.ui.paging:getCurrentPage())
-                or (self.ui.view and self.ui.view.state and self.ui.view.state.page)
-                or self._cur_page
-            self:_gotoPage(new_page)
+            local new_page = (self.ui.view and self.ui.view.state and self.ui.view.state.page) or self._cur_page
+            self:_previewPage(new_page)
         end)
         return true
     end
@@ -697,10 +996,8 @@ function PageScrubber:onTap(_, ges)
     if self._ctrl_next_dimen and ges.pos:intersectWith(self._ctrl_next_dimen) then
         self:_flashAndDo("ctrl_next", self._ctrl_next_dimen, function()
             self.ui:handleEvent(Event:new("GotoNextBookmarkFromPage", false))
-            local new_page = (self.ui.paging and self.ui.paging:getCurrentPage())
-                or (self.ui.view and self.ui.view.state and self.ui.view.state.page)
-                or self._cur_page
-            self:_gotoPage(new_page)
+            local new_page = (self.ui.view and self.ui.view.state and self.ui.view.state.page) or self._cur_page
+            self:_previewPage(new_page)
         end)
         return true
     end
@@ -729,16 +1026,42 @@ function PageScrubber:onTap(_, ges)
             if ges.pos:intersectWith(rect) then
                 local slot = self._grid_tiles[idx]
                 if slot and slot.page then
+                    
                     if idx == 2 then
-                        self._cur_page = slot.page
-                        self.ui:handleEvent(Event:new("GotoPage", slot.page))
-                        self:_closeStay()
-                    else
+                        if slot.error then
+                            pcall(function() DocCache:clear() end)
+                        end
                         self:_gotoPage(slot.page)
+                        self:_closeStay()
+                        
+                    elseif slot.error then
+                        slot.error = false
+                        slot.loading = true
+                        UIManager:setDirty(self, "ui", rect)
+
+                        self._thumb_req_w = (self._thumb_req_w == self._grid_item_w) 
+                                            and (self._grid_item_w + 1) or self._grid_item_w
+                        
+                        self:_updateGridPages()
+                    else
+                        self:_previewPage(slot.page)
                     end
+                    
                 end
                 return true
             end
+        end
+        return true
+    end
+
+    if self._grid_disabled and self._grid_dimen and ges.pos:intersectWith(self._grid_dimen) then
+        if ges.pos:intersectWith(self._fallback_prev_dimen) then
+            self:_previewPage(self._cur_page - 1)
+        elseif ges.pos:intersectWith(self._fallback_next_dimen) then
+            self:_previewPage(self._cur_page + 1)
+        else
+            self:_gotoPage(self._cur_page)
+            self:_closeStay()
         end
         return true
     end
@@ -748,7 +1071,9 @@ end
 
 function PageScrubber:onPan(_, ges)
     if self._closing then return true end
-    if self._slider:handlePan(ges) then return true end
+    if self._slider:handlePan(ges) then 
+        return true 
+    end
     self:_cancelHold()
     return true
 end
@@ -762,11 +1087,16 @@ end
 
 function PageScrubber:onSwipe(_, ges)
     if self._closing then return true end
+
+    if self._bar_dimen and ges.pos and ges.pos.y >= self._bar_dimen.y then
+        return true
+    end
+
     if ges.direction == "west" then
-        self:_gotoPage(self._cur_page + 1)
+        self:_previewPage(self._cur_page + 1)
         return true
     elseif ges.direction == "east" then
-        self:_gotoPage(self._cur_page - 1)
+        self:_previewPage(self._cur_page - 1)
         return true
     end
     return false
@@ -779,6 +1109,13 @@ function PageScrubber:onHold(_, ges)
             self:_startHold("prev"); return true
         end
         if ges.pos:intersectWith(self:_gridSlotDimen(3)) then
+            self:_startHold("next"); return true
+        end
+    elseif self._grid_disabled and self._grid_dimen then
+        if ges.pos:intersectWith(self._fallback_prev_dimen) then
+            self:_startHold("prev"); return true
+        end
+        if ges.pos:intersectWith(self._fallback_next_dimen) then
             self:_startHold("next"); return true
         end
     end
@@ -799,11 +1136,8 @@ function PageScrubber:onCloseWidget()
     self:_cancelHold()
 
     if not self._grid_disabled then
-        if self._grid_batch_id and self.ui.thumbnail then
-            self.ui.thumbnail:cancelPageThumbnailRequests(self._grid_batch_id)
-        end
         self._grid_tiles = {}
-        if self.ui.thumbnail and self.ui.thumbnail.tidyCache then
+        if (self._tasks_in_flight or 0) == 0 and self.ui.thumbnail and self.ui.thumbnail.tidyCache then
             self.ui.thumbnail:tidyCache()
         end
     end
@@ -816,6 +1150,8 @@ function PageScrubber:onCloseWidget()
     end
 
     if self.tw_chapter then self.tw_chapter:free() end
+    if self.tw_booktitle then self.tw_booktitle:free() end
+    if self._tw_grid_error then self._tw_grid_error:free() end
     if self.tw_info then self.tw_info:free() end
     if self.tw_toc then self.tw_toc:free() end
     if self.tw_bm then self.tw_bm:free() end
@@ -823,6 +1159,8 @@ function PageScrubber:onCloseWidget()
     if self.tw_fn then self.tw_fn:free() end
     if self.tw_lib then self.tw_lib:free() end
     if self.tw_x then self.tw_x:free() end
+    if self.tw_fb_l then self.tw_fb_l:free() end
+    if self.tw_fb_r then self.tw_fb_r:free() end
     if self.tw_ctrl_prev then self.tw_ctrl_prev:free() end
     if self.tw_ctrl_mark then self.tw_ctrl_mark:free() end
     if self.tw_ctrl_next then self.tw_ctrl_next:free() end
@@ -844,19 +1182,14 @@ Dispatcher:registerAction("page_scrubber_action", {
 
 function ReaderUI:onPageScrubber()
     local ui = self
-    if ui.document and type(ui.document.file) == "string" then
-        local ext = ui.document.file:match("^.+(%..+)$")
-        if ext then
-            ext = ext:lower()
-            if ext == ".pdf" or ext == ".cbr" or ext == ".cbz" or ext == ".cb7" or ext == ".cbt" or ext == ".djvu" then
-                return
-            end
-        end
-    end
+    if not ui.document then return end
 
     UIManager:nextTick(function()
         if not ui or not ui.document then return end
         UIManager:show(PageScrubber:new{ ui = ui, document = ui.document })
+        if Device:isKindle() then
+            UIManager:setDirty(nil, "full")
+        end
     end)
 end
 
