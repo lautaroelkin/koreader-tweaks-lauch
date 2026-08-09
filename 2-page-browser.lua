@@ -16,6 +16,7 @@
     - Swipe Down to Close: Soporte para cerrar el widget deslizando hacia abajo (swipe simple o multi).
     - Zombie Widget Fix: Aniquilación total de hilos en segundo plano al cerrar el menú para evitar páginas en blanco.
     - Sync Redraw Fix: Se eliminó el salto condicional de async_response para forzar el dibujado de imágenes en caché.
+    - Dynamic UI Scaling: Multiplicador global CUSTOM_UI_SCALE para ajustar el tamaño en pantallas HD (con fix de bordes).
 ]]--
 
 local Blitbuffer      = require("ffi/blitbuffer")
@@ -34,6 +35,34 @@ local logger          = require("logger")
 local _               = require("gettext")
 
 local Screen = Device.screen
+
+-- =========================================================================
+-- CRITICAL WARNING / ADVERTENCIA CRÍTICA:
+-- You MUST delete or disable any other "page scrubber" or "page browser" 
+-- patches/plugins in your KOReader folder before using this one. Having 
+-- older versions or duplicate files will cause conflicts and bugs.
+-- 
+-- DEBES borrar o desactivar cualquier otro parche de "page scrubber" o 
+-- "page browser" en tu carpeta de KOReader antes de usar este. Tener 
+-- versiones viejas o archivos duplicados causará conflictos y errores.
+-- =========================================================================
+
+-- =========================================================================
+-- USER CONFIGURATION / CONFIGURACIÓN DE USUARIO
+-- =========================================================================
+-- Modify this value to scale the entire UI (icons, fonts, margins)
+-- Modificá este valor para escalar toda la interfaz (íconos, fuentes, márgenes)
+-- 1.0 = Default size / 0.8 = 20% smaller / 1.2 = 20% bigger
+-- 1.0 = Tamaño por defecto / 0.8 = 20% más chico / 1.2 = 20% más grande
+local CUSTOM_UI_SCALE = 1.2 
+-- =========================================================================
+
+local function S(val)
+    local res = math.floor(val * CUSTOM_UI_SCALE)
+    -- Si el valor original era mayor a 0, garantizamos al menos 1 píxel para que no desaparezcan los bordes al achicar
+    if val > 0 and res == 0 then res = 1 end
+    return Screen:scaleBySize(res)
+end
 
 local function paintPill(bb, px, py, pw, ph, color)
     if pw <= 0 or ph <= 0 then return end
@@ -79,8 +108,8 @@ ProgressSlider.__index = ProgressSlider
 
 function ProgressSlider:new(o)
     local obj = setmetatable(o or {}, self)
-    obj.knob_r = Screen:scaleBySize(10)
-    obj.height = obj.knob_r * 2 + Screen:scaleBySize(6)
+    obj.knob_r = S(10)
+    obj.height = obj.knob_r * 2 + S(6)
     obj.dimen   = Geom:new{ x = 0, y = 0, w = obj.width or 0, h = obj.height }
     obj._dragging = false
     return obj
@@ -107,15 +136,15 @@ function ProgressSlider:paintTo(bb, x, y)
     local r = self.knob_r
     local cy = math.floor(y + h / 2)
     
-    paintPill(bb, x, cy - Screen:scaleBySize(2), w, Screen:scaleBySize(4), Blitbuffer.COLOR_LIGHT_GRAY)
+    paintPill(bb, x, cy - S(2), w, S(4), Blitbuffer.COLOR_LIGHT_GRAY)
     local frac = (self.value - self.value_min) / math.max(1, self.value_max - self.value_min)
     local fw = math.floor(frac * w + 0.5)
     
-    if fw > 0 then paintPill(bb, x, cy - Screen:scaleBySize(2), fw, Screen:scaleBySize(4), Blitbuffer.COLOR_BLACK) end
+    if fw > 0 then paintPill(bb, x, cy - S(2), fw, S(4), Blitbuffer.COLOR_BLACK) end
 
     local kx = math.floor(x + self:_valueToX(self.value))
     paintCircle(bb, kx, cy, r, Blitbuffer.COLOR_WHITE)
-    paintCircle(bb, kx, cy, r - Screen:scaleBySize(3), Blitbuffer.COLOR_BLACK)
+    paintCircle(bb, kx, cy, r - S(3), Blitbuffer.COLOR_BLACK)
 end
 
 function ProgressSlider:handleTap(ges)
@@ -187,15 +216,15 @@ function PageScrubber:init()
 
     local sw = Screen:getWidth()
     local sh = Screen:getHeight()
-    local pad = Screen:scaleBySize(16)
+    local pad = S(16)
 
-    local top_h     = Screen:scaleBySize(62)
+    local top_h     = S(62)
     local top_bar_y = 0
     self._top_bar_dimen = Geom:new{ x = 0, y = top_bar_y, w = sw, h = top_h }
 
-    self.font_ch    = Font:getFace("cfont", Screen:scaleBySize(19))
-    self.font_title = Font:getFace("cfont", Screen:scaleBySize(16))
-    self.font_info  = Font:getFace("cfont", Screen:scaleBySize(14))
+    self.font_ch    = Font:getFace("cfont", S(19))
+    self.font_title = Font:getFace("cfont", S(16))
+    self.font_info  = Font:getFace("cfont", S(14))
 
     local function getBookTitle()
         local title
@@ -217,16 +246,16 @@ function PageScrubber:init()
 
     self.tw_booktitle = TextWidget:new{
         text = getBookTitle(), face = self.font_title, fgcolor = Blitbuffer.COLOR_BLACK,
-        max_width = sw - pad * 3 - Screen:scaleBySize(44), 
+        max_width = sw - pad * 3 - S(44), 
     }
     
-    local title_margin_top = Screen:scaleBySize(14)
-    local title_margin_bot = Screen:scaleBySize(8)
+    local title_margin_top = S(14)
+    local title_margin_bot = S(8)
     local title_h = self.tw_booktitle:getSize().h
     
     self._booktitle_y = top_h + title_margin_top
 
-    self._cbtn_sz  = Screen:scaleBySize(46)
+    self._cbtn_sz  = S(46)
     self.max_title_w = sw - pad * 6 - self._cbtn_sz * 2
     
     self.tw_chapter  = TextWidget:new{ text = "", face = self.font_ch, fgcolor = Blitbuffer.COLOR_BLACK, max_width = self.max_title_w }
@@ -247,12 +276,12 @@ function PageScrubber:init()
     }
     local slider_h = self._slider:getSize().h
 
-    local p_top    = Screen:scaleBySize(8)
-    local spacing1 = Screen:scaleBySize(3)
-    local spacing2 = Screen:scaleBySize(4)
-    local spacing3 = Screen:scaleBySize(8)
-    local mark_sz  = Screen:scaleBySize(40)
-    local p_bot    = Screen:scaleBySize(8)
+    local p_top    = S(8)
+    local spacing1 = S(3)
+    local spacing2 = S(4)
+    local spacing3 = S(8)
+    local mark_sz  = S(40)
+    local p_bot    = S(8)
 
     local bar_h = p_top + ch_h + spacing1 + info_h + spacing2 + slider_h + spacing3 + mark_sz + p_bot
     local bar_y = sh - bar_h
@@ -263,7 +292,7 @@ function PageScrubber:init()
     self._grid_dimen = Geom:new{ x = 0, y = grid_top, w = sw, h = grid_y_avail }
     self._grid_cols = 3
     self._grid_rows = 1
-    self._grid_margin = Screen:scaleBySize(10)
+    self._grid_margin = S(10)
 
     local is_comic = false
     do
@@ -298,20 +327,20 @@ function PageScrubber:init()
     self._fallback_next_dimen = Geom:new{
         x = sw - math.floor(sw / 3), y = self._grid_dimen.y, w = math.floor(sw / 3), h = self._grid_dimen.h }
     
-    self.tw_fb_l = TextWidget:new{ text = "‹", face = Font:getFace("cfont", Screen:scaleBySize(48)), fgcolor = Blitbuffer.COLOR_BLACK }
-    self.tw_fb_r = TextWidget:new{ text = "›", face = Font:getFace("cfont", Screen:scaleBySize(48)), fgcolor = Blitbuffer.COLOR_BLACK }
+    self.tw_fb_l = TextWidget:new{ text = "‹", face = Font:getFace("cfont", S(48)), fgcolor = Blitbuffer.COLOR_BLACK }
+    self.tw_fb_r = TextWidget:new{ text = "›", face = Font:getFace("cfont", S(48)), fgcolor = Blitbuffer.COLOR_BLACK }
 
-    self.tw_lib      = TextWidget:new{ text = "\u{F015}", face = Font:getFace("cfont", Screen:scaleBySize(18)), fgcolor = Blitbuffer.COLOR_BLACK }
-    self.tw_fn       = TextWidget:new{ text = "⚙",   face = Font:getFace("cfont", Screen:scaleBySize(18)), fgcolor = Blitbuffer.COLOR_BLACK }
-    self.tw_bm       = TextWidget:new{ text = "\u{F0F6}", face = Font:getFace("cfont", Screen:scaleBySize(15)), fgcolor = Blitbuffer.COLOR_BLACK }
-    self.tw_toc      = TextWidget:new{ text = "☰",   face = Font:getFace("cfont", Screen:scaleBySize(22)), fgcolor = Blitbuffer.COLOR_BLACK }
-    self.tw_aa       = TextWidget:new{ text = "Aa",  face = Font:getFace("cfont", Screen:scaleBySize(16)), fgcolor = Blitbuffer.COLOR_BLACK }
-    self.tw_x        = TextWidget:new{ text = "✕",   face = Font:getFace("cfont", Screen:scaleBySize(22)), fgcolor = Blitbuffer.COLOR_BLACK }
+    self.tw_lib      = TextWidget:new{ text = "\u{F015}", face = Font:getFace("cfont", S(18)), fgcolor = Blitbuffer.COLOR_BLACK }
+    self.tw_fn       = TextWidget:new{ text = "⚙",   face = Font:getFace("cfont", S(18)), fgcolor = Blitbuffer.COLOR_BLACK }
+    self.tw_bm       = TextWidget:new{ text = "\u{F0F6}", face = Font:getFace("cfont", S(15)), fgcolor = Blitbuffer.COLOR_BLACK }
+    self.tw_toc      = TextWidget:new{ text = "☰",   face = Font:getFace("cfont", S(22)), fgcolor = Blitbuffer.COLOR_BLACK }
+    self.tw_aa       = TextWidget:new{ text = "Aa",  face = Font:getFace("cfont", S(16)), fgcolor = Blitbuffer.COLOR_BLACK }
+    self.tw_x        = TextWidget:new{ text = "✕",   face = Font:getFace("cfont", S(22)), fgcolor = Blitbuffer.COLOR_BLACK }
 
-    self.tw_ch_l     = TextWidget:new{ text = "‹‹",  face = Font:getFace("cfont", Screen:scaleBySize(24)), fgcolor = Blitbuffer.COLOR_BLACK }
-    self.tw_ch_r     = TextWidget:new{ text = "››",  face = Font:getFace("cfont", Screen:scaleBySize(24)), fgcolor = Blitbuffer.COLOR_BLACK }
+    self.tw_ch_l     = TextWidget:new{ text = "‹‹",  face = Font:getFace("cfont", S(24)), fgcolor = Blitbuffer.COLOR_BLACK }
+    self.tw_ch_r     = TextWidget:new{ text = "››",  face = Font:getFace("cfont", S(24)), fgcolor = Blitbuffer.COLOR_BLACK }
 
-    local font_ctrl  = Font:getFace("cfont", Screen:scaleBySize(20))
+    local font_ctrl  = Font:getFace("cfont", S(20))
     self.tw_ctrl_prev = TextWidget:new{ text = "‹", face = font_ctrl, fgcolor = Blitbuffer.COLOR_BLACK }
     self.tw_ctrl_mark = TextWidget:new{ text = "\u{F097}", face = font_ctrl, fgcolor = Blitbuffer.COLOR_BLACK }
     self.tw_ctrl_next = TextWidget:new{ text = "›", face = font_ctrl, fgcolor = Blitbuffer.COLOR_BLACK }
@@ -322,10 +351,10 @@ function PageScrubber:init()
 
     self:_updateTexts()
 
-    local top_sz    = Screen:scaleBySize(44)
-    local spacing   = Screen:scaleBySize(8)
-    local left_base = Screen:scaleBySize(14)
-    local right_base = sw - Screen:scaleBySize(14)
+    local top_sz    = S(44)
+    local spacing   = S(8)
+    local left_base = S(14)
+    local right_base = sw - S(14)
     local top_y     = top_bar_y + math.floor((top_h - top_sz) / 2)
 
     self._x_dimen   = Geom:new{ x = right_base - top_sz, y = top_y, w = top_sz, h = top_sz }
@@ -348,8 +377,8 @@ function PageScrubber:init()
 
     self.ctrl_y_pos = current_y
 
-    local side_sz = Screen:scaleBySize(34)
-    local ctrl_sp = Screen:scaleBySize(10)
+    local side_sz = S(34)
+    local ctrl_sp = S(10)
     local total_ctrl_w = side_sz * 2 + mark_sz + ctrl_sp * 2
     local ctrl_x = math.floor((sw - total_ctrl_w) / 2)
 
@@ -358,8 +387,8 @@ function PageScrubber:init()
     self._ctrl_next_dimen = Geom:new{ x = ctrl_x + side_sz + mark_sz + ctrl_sp * 2, y = self.ctrl_y_pos + math.floor((mark_sz - side_sz)/2), w = side_sz, h = side_sz }
 
     local text_center_x = math.floor(sw / 2)
-    self._prev_ch_dimen = Geom:new{ x = text_center_x - math.floor(self.max_title_w / 2) - self._cbtn_sz - Screen:scaleBySize(6), y = self.ch_y_pos, w = self._cbtn_sz, h = self._cbtn_sz }
-    self._next_ch_dimen = Geom:new{ x = text_center_x + math.floor(self.max_title_w / 2) + Screen:scaleBySize(6), y = self.ch_y_pos, w = self._cbtn_sz, h = self._cbtn_sz }
+    self._prev_ch_dimen = Geom:new{ x = text_center_x - math.floor(self.max_title_w / 2) - self._cbtn_sz - S(6), y = self.ch_y_pos, w = self._cbtn_sz, h = self._cbtn_sz }
+    self._next_ch_dimen = Geom:new{ x = text_center_x + math.floor(self.max_title_w / 2) + S(6), y = self.ch_y_pos, w = self._cbtn_sz, h = self._cbtn_sz }
 
     self.dimen = Geom:new{ x = 0, y = 0, w = sw, h = sh }
 
@@ -618,8 +647,6 @@ function PageScrubber:_updateGridPages()
                             slot.loading = false
                             slot.error = true
                         end
-                        -- FIX VITAL: Se eliminó la validación 'if async_response then' para que la UI 
-                        -- SIEMPRE se ensucie y se redibuje, incluso cuando la imagen sale del caché instantáneamente.
                         UIManager:setDirty(self, "ui", self:_gridSlotDimen(idx))
                     end
 
@@ -666,7 +693,7 @@ function PageScrubber:_paintGrid(bb)
             elseif slot.error then
                 if not self._tw_grid_error then
                     self._tw_grid_error = TextWidget:new{
-                        text = "!", face = Font:getFace("cfont", Screen:scaleBySize(32)),
+                        text = "!", face = Font:getFace("cfont", S(32)),
                         fgcolor = Blitbuffer.COLOR_BLACK,
                     }
                 end
@@ -679,7 +706,7 @@ function PageScrubber:_paintGrid(bb)
             end
             
             local is_cur = (idx == 2)
-            local border = is_cur and Screen:scaleBySize(3) or Screen:scaleBySize(1)
+            local border = is_cur and S(3) or S(1)
             bb:paintBorder(rect.x, rect.y, rect.w, rect.h, border, Blitbuffer.COLOR_BLACK, 0)
         end
     end
@@ -747,21 +774,20 @@ end
 
 function PageScrubber:_paintToImpl(bb, x, y)
     local sw   = Screen:getWidth()
-    local pad  = Screen:scaleBySize(16)
+    local pad  = S(16)
     local bd   = self._bar_dimen
     local td   = self._top_bar_dimen
 
     bb:paintRect(td.x, td.y, td.w, td.h, Blitbuffer.COLOR_WHITE)
-    bb:paintRect(td.x, td.y + td.h - Screen:scaleBySize(2), td.w, Screen:scaleBySize(2), Blitbuffer.COLOR_BLACK)
+    bb:paintRect(td.x, td.y + td.h - S(2), td.w, S(2), Blitbuffer.COLOR_BLACK)
 
     bb:paintRect(bd.x, bd.y, bd.w, bd.h, Blitbuffer.COLOR_WHITE)
-    bb:paintRect(bd.x, bd.y, bd.w, Screen:scaleBySize(2), Blitbuffer.COLOR_BLACK)
+    bb:paintRect(bd.x, bd.y, bd.w, S(2), Blitbuffer.COLOR_BLACK)
 
     local title_strip_y = td.y + td.h
     local title_strip_h = self._grid_dimen.y - title_strip_y
     bb:paintRect(0, title_strip_y, sw, title_strip_h, Blitbuffer.COLOR_WHITE)
     
-    -- Título Alineado a la Izquierda y Pseudo-Bold
     local title_x = pad
     
     self.tw_booktitle:paintTo(bb, title_x,     self._booktitle_y)
@@ -795,9 +821,9 @@ function PageScrubber:_paintToImpl(bb, x, y)
             local tsz = tw:getSize()
             local y_offset = 0
             if tw.text == "\u{F097}" or tw.text == "\u{F02E}" then
-                y_offset = Screen:scaleBySize(1)
+                y_offset = S(1)
             elseif tw.text == "‹‹" or tw.text == "››" then
-                y_offset = -Screen:scaleBySize(1)
+                y_offset = -S(1)
             end
             tw:paintTo(bb, cx - math.floor(tsz.w / 2), cy - math.floor(tsz.h / 2) + y_offset)
             return
@@ -808,14 +834,14 @@ function PageScrubber:_paintToImpl(bb, x, y)
             fg_color = is_pressed and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK
             
             if bg_color then
-                paintRoundRect(bb, dimen.x, dimen.y, dimen.w, dimen.h, Screen:scaleBySize(8), bg_color)
+                paintRoundRect(bb, dimen.x, dimen.y, dimen.w, dimen.h, S(8), bg_color)
             end
             
             tw.fgcolor = fg_color
             local tsz = tw:getSize()
             local y_offset = 0
             if tw.text == "\u{F015}" or tw.text == "\u{F0F6}" then
-                y_offset = Screen:scaleBySize(1)
+                y_offset = S(1)
             end
             tw:paintTo(bb, cx - math.floor(tsz.w / 2), cy - math.floor(tsz.h / 2) + y_offset)
             return
