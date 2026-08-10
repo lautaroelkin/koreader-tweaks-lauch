@@ -1,22 +1,22 @@
 --[[
     2-page-scrubber.lua
     Page scrubber overlay (Kindle E-ink optimized)
-    - Sacred Center Logic: Current page is strictly locked to the center slot (idx 2).
-    - Semaphore Protection: Prevents CBZ cache corruption during fast-tapping.
-    - Original Fluid Slider: Responsive dragging restored.
-    - Swipe Filter: Ignores swipe gestures on the bottom bar to prevent slider interference.
-    - Custom UI: Home button included, bookmark icon updated, custom layout order.
-    - Soft Retries: Evita limpiar DocCache durante errores para no saturar la RAM.
-    - Spread Fix: Eliminado el falso positivo de aspecto que bloqueaba páginas dobles u horizontales.
-    - Compact 3-Page Grid: Las 3 páginas cargan completas a lo ancho, achicadas para evitar desbordes.
-    - Anti-Crash Shield: Purga activa del DocCache tras generar CADA miniatura para evitar OOM.
-    - RAM Micro-Nap & Timeout Extension: Pausas imperceptibles y 6.9 segundos de procesado.
-    - Title Formatting: Título a la izquierda, con pseudo-bold forzado y márgenes balanceados.
-    - D-Pad Chapter Navigation: Flecha arriba avanza de capítulo, flecha abajo retrocede de capítulo.
-    - Swipe Down to Close: Soporte para cerrar el widget deslizando hacia abajo (swipe simple o multi).
-    - Zombie Widget Fix: Aniquilación total de hilos en segundo plano al cerrar el menú para evitar páginas en blanco.
-    - Sync Redraw Fix: Se eliminó el salto condicional de async_response para forzar el dibujado de imágenes en caché.
-    - Dynamic UI Scaling: Multiplicador global CUSTOM_UI_SCALE para ajustar el tamaño en pantallas HD (con fix de bordes).
+    - Sacred Center Logic
+    - Semaphore Protection
+    - Original Fluid Slider
+    - Swipe Filter
+    - Custom UI
+    - Soft Retries
+    - Spread Fix
+    - Compact 3-Page Grid
+    - Anti-Crash Shield
+    - RAM Micro-Nap & Timeout Extension
+    - Title Formatting
+    - D-Pad Chapter Navigation
+    - Swipe Down to Close
+    - Zombie Widget Fix
+    - Sync Redraw Fix
+    - Dynamic UI Scaling (Custom UI Scale, border fixes, and rebalanced icons)
 ]]--
 
 local Blitbuffer      = require("ffi/blitbuffer")
@@ -37,29 +37,20 @@ local _               = require("gettext")
 local Screen = Device.screen
 
 -- =========================================================================
--- CRITICAL WARNING / ADVERTENCIA CRÍTICA:
+-- CRITICAL WARNING
 -- You MUST delete or disable any other "page scrubber" or "page browser" 
--- patches/plugins in your KOReader folder before using this one. Having 
--- older versions or duplicate files will cause conflicts and bugs.
--- 
--- DEBES borrar o desactivar cualquier otro parche de "page scrubber" o 
--- "page browser" en tu carpeta de KOReader antes de usar este. Tener 
--- versiones viejas o archivos duplicados causará conflictos y errores.
+-- patches/plugins in your KOReader folder before using this one.
 -- =========================================================================
 
 -- =========================================================================
--- USER CONFIGURATION / CONFIGURACIÓN DE USUARIO
--- =========================================================================
+-- USER CONFIGURATION
 -- Modify this value to scale the entire UI (icons, fonts, margins)
--- Modificá este valor para escalar toda la interfaz (íconos, fuentes, márgenes)
 -- 1.0 = Default size / 0.8 = 20% smaller / 1.2 = 20% bigger
--- 1.0 = Tamaño por defecto / 0.8 = 20% más chico / 1.2 = 20% más grande
-local CUSTOM_UI_SCALE = 1.2 
+local CUSTOM_UI_SCALE = 1 
 -- =========================================================================
 
 local function S(val)
     local res = math.floor(val * CUSTOM_UI_SCALE)
-    -- Si el valor original era mayor a 0, garantizamos al menos 1 píxel para que no desaparezcan los bordes al achicar
     if val > 0 and res == 0 then res = 1 end
     return Screen:scaleBySize(res)
 end
@@ -330,17 +321,17 @@ function PageScrubber:init()
     self.tw_fb_l = TextWidget:new{ text = "‹", face = Font:getFace("cfont", S(48)), fgcolor = Blitbuffer.COLOR_BLACK }
     self.tw_fb_r = TextWidget:new{ text = "›", face = Font:getFace("cfont", S(48)), fgcolor = Blitbuffer.COLOR_BLACK }
 
-    self.tw_lib      = TextWidget:new{ text = "\u{F015}", face = Font:getFace("cfont", S(18)), fgcolor = Blitbuffer.COLOR_BLACK }
-    self.tw_fn       = TextWidget:new{ text = "⚙",   face = Font:getFace("cfont", S(18)), fgcolor = Blitbuffer.COLOR_BLACK }
-    self.tw_bm       = TextWidget:new{ text = "\u{F0F6}", face = Font:getFace("cfont", S(15)), fgcolor = Blitbuffer.COLOR_BLACK }
-    self.tw_toc      = TextWidget:new{ text = "☰",   face = Font:getFace("cfont", S(22)), fgcolor = Blitbuffer.COLOR_BLACK }
-    self.tw_aa       = TextWidget:new{ text = "Aa",  face = Font:getFace("cfont", S(16)), fgcolor = Blitbuffer.COLOR_BLACK }
-    self.tw_x        = TextWidget:new{ text = "✕",   face = Font:getFace("cfont", S(22)), fgcolor = Blitbuffer.COLOR_BLACK }
+    self.tw_lib      = TextWidget:new{ text = "\u{F015}", face = Font:getFace("cfont", S(26)), fgcolor = Blitbuffer.COLOR_BLACK }
+    self.tw_fn       = TextWidget:new{ text = "⚙",   face = Font:getFace("cfont", S(26)), fgcolor = Blitbuffer.COLOR_BLACK }
+    self.tw_bm       = TextWidget:new{ text = "\u{F0F6}", face = Font:getFace("cfont", S(22)), fgcolor = Blitbuffer.COLOR_BLACK }
+    self.tw_toc      = TextWidget:new{ text = "☰",   face = Font:getFace("cfont", S(28)), fgcolor = Blitbuffer.COLOR_BLACK }
+    self.tw_aa       = TextWidget:new{ text = "Aa",  face = Font:getFace("cfont", S(22)), fgcolor = Blitbuffer.COLOR_BLACK }
+    self.tw_x        = TextWidget:new{ text = "✕",   face = Font:getFace("cfont", S(28)), fgcolor = Blitbuffer.COLOR_BLACK }
 
-    self.tw_ch_l     = TextWidget:new{ text = "‹‹",  face = Font:getFace("cfont", S(24)), fgcolor = Blitbuffer.COLOR_BLACK }
-    self.tw_ch_r     = TextWidget:new{ text = "››",  face = Font:getFace("cfont", S(24)), fgcolor = Blitbuffer.COLOR_BLACK }
+    self.tw_ch_l     = TextWidget:new{ text = "‹‹",  face = Font:getFace("cfont", S(32)), fgcolor = Blitbuffer.COLOR_BLACK }
+    self.tw_ch_r     = TextWidget:new{ text = "››",  face = Font:getFace("cfont", S(32)), fgcolor = Blitbuffer.COLOR_BLACK }
 
-    local font_ctrl  = Font:getFace("cfont", S(20))
+    local font_ctrl  = Font:getFace("cfont", S(28))
     self.tw_ctrl_prev = TextWidget:new{ text = "‹", face = font_ctrl, fgcolor = Blitbuffer.COLOR_BLACK }
     self.tw_ctrl_mark = TextWidget:new{ text = "\u{F097}", face = font_ctrl, fgcolor = Blitbuffer.COLOR_BLACK }
     self.tw_ctrl_next = TextWidget:new{ text = "›", face = font_ctrl, fgcolor = Blitbuffer.COLOR_BLACK }
@@ -352,7 +343,7 @@ function PageScrubber:init()
     self:_updateTexts()
 
     local top_sz    = S(44)
-    local spacing   = S(8)
+    local spacing   = S(12)
     local left_base = S(14)
     local right_base = sw - S(14)
     local top_y     = top_bar_y + math.floor((top_h - top_sz) / 2)
@@ -424,7 +415,7 @@ function PageScrubber:init()
     if not self._grid_disabled then
         local ok_clear, err_clear = pcall(function() DocCache:clear() end)
         if not ok_clear then
-            logger.warn("page-scrubber: no se pudo limpiar DocCache al abrir:", err_clear)
+            logger.warn("page-scrubber: failed to clear DocCache:", err_clear)
         end
 
         UIManager:scheduleIn(0.15, function()
@@ -528,7 +519,7 @@ function PageScrubber:_updateGridPages()
 
     self._is_busy = true
     self._tasks_in_flight = #missing
-    logger.info("page-scrubber: nuevo batch", batch_id, "cur_page", self._cur_page, "faltan", #missing)
+    logger.info("page-scrubber: req batch", batch_id, "cur_page", self._cur_page, "missing", #missing)
 
     local function requestOne(pos)
         if self._closing or self._grid_batch_id ~= batch_id then return end
@@ -575,22 +566,17 @@ function PageScrubber:_updateGridPages()
                 if self._closing then return end
                 if not advanced and self._grid_batch_id == batch_id then
                     timed_out = true
-                    logger.warn("page-scrubber: TIMEOUT esperando thumbnail de pagina", req_page, "batch", batch_id)
+                    logger.warn("page-scrubber: TIMEOUT page", req_page, "batch", batch_id)
                     advance()
                 end
             end)
-
-            logger.info("page-scrubber: pidiendo thumbnail pagina", req_page, "slot", idx,
-                "batch", batch_id, "intento", retry_count)
 
             local delayed = thumbnail:getPageThumbnail(req_page, self._thumb_req_w, self._thumb_req_h, batch_id,
                 function(tile, resp_batch_id, async_response)
                     if self._closing then return end
                     if timed_out then return end
                     
-                    if self._grid_batch_id ~= batch_id then
-                        logger.info("page-scrubber: descartando respuesta vieja pagina", req_page,
-                            "batch_actual", self._grid_batch_id)
+                    if resp_batch_id ~= batch_id or self._grid_batch_id ~= batch_id then
                         return
                     end
 
@@ -600,7 +586,6 @@ function PageScrubber:_updateGridPages()
                     local corrupted = false
                     if not tile or not tile.bb or not w or not h or w <= 0 or h <= 0 then
                         corrupted = true
-                        logger.warn("page-scrubber: thumbnail NULO/invalido pagina", req_page, "batch", batch_id)
                     end
 
                     if corrupted and retry_count < MAX_RETRIES then
@@ -608,7 +593,6 @@ function PageScrubber:_updateGridPages()
                         self._thumb_req_w = (self._thumb_req_w == self._grid_item_w) 
                                             and (self._grid_item_w + 1) or self._grid_item_w
                         
-                        logger.warn("page-scrubber: reintentando pagina", req_page, "intento", retry_count)
                         if not self._closing then
                             UIManager:scheduleIn(0.3, dispatch)
                         end
@@ -616,24 +600,16 @@ function PageScrubber:_updateGridPages()
                     end
 
                     if not corrupted then
-                        logger.info("page-scrubber: thumbnail OK pagina", req_page, w, "x", h,
-                            "async", tostring(async_response))
-
                         if tile and tile.bb and (w > self._thumb_req_w + 4 or h > self._thumb_req_h + 4) then
                             local ok_scale, scaled = pcall(function()
                                 return tile.bb:scale(self._thumb_req_w, self._thumb_req_h)
                             end)
                             if ok_scale and scaled then
-                                logger.info("page-scrubber: reescalando thumbnail cacheado", w, "x", h,
-                                    "->", self._thumb_req_w, "x", self._thumb_req_h)
                                 tile = { bb = scaled }
-                            else
-                                logger.warn("page-scrubber: no se pudo reescalar thumbnail:", scaled)
                             end
                         end
                     else
-                        logger.warn("page-scrubber: fallo total, pagina", req_page,
-                            "queda marcada como error")
+                        logger.warn("page-scrubber: failed page", req_page)
                     end
                     
                     if self._is_comic then
@@ -724,10 +700,7 @@ function PageScrubber:_gotoPage(page)
 
     self:_waitForIdle(function()
         if self._nav_token == my_token then
-            logger.info("page-scrubber: GotoPage real disparado, pagina", target_page)
             self.ui:handleEvent(Event:new("GotoPage", target_page))
-        else
-            logger.info("page-scrubber: GotoPage descartado (superado por otro toque), pagina", target_page)
         end
     end)
 
@@ -902,7 +875,7 @@ function PageScrubber:_closeAndShow(event_name)
     UIManager:scheduleIn(0.15, function()
         local ok, err = pcall(function() self.ui:handleEvent(Event:new(event_name)) end)
         if not ok then
-            logger.warn("page-scrubber: evento", event_name, "falló:", err)
+            logger.warn("page-scrubber: failed event", event_name)
         end
     end)
 end
