@@ -99,7 +99,7 @@ ProgressSlider.__index = ProgressSlider
 
 function ProgressSlider:new(o)
     local obj = setmetatable(o or {}, self)
-    obj.knob_r = S(10)
+    obj.knob_r = S(16) 
     obj.height = obj.knob_r * 2 + S(6)
     obj.dimen   = Geom:new{ x = 0, y = 0, w = obj.width or 0, h = obj.height }
     obj._dragging = false
@@ -127,20 +127,48 @@ function ProgressSlider:paintTo(bb, x, y)
     local r = self.knob_r
     local cy = math.floor(y + h / 2)
     
+    -- Barra base
     paintPill(bb, x, cy - S(2), w, S(4), Blitbuffer.COLOR_LIGHT_GRAY)
     local frac = (self.value - self.value_min) / math.max(1, self.value_max - self.value_min)
     local fw = math.floor(frac * w + 0.5)
     
+    -- Barra llena
     if fw > 0 then paintPill(bb, x, cy - S(2), fw, S(4), Blitbuffer.COLOR_BLACK) end
 
+    -- Bookmarks
+    if self.bookmarks then
+        for _, bmpage in ipairs(self.bookmarks) do
+            if bmpage >= self.value_min and bmpage <= self.value_max then
+                local bmx = math.floor(x + self:_valueToX(bmpage))
+                paintCircle(bb, bmx, cy, S(9), Blitbuffer.COLOR_WHITE)
+                paintCircle(bb, bmx, cy, S(6), Blitbuffer.COLOR_BLACK)
+            end
+        end
+    end
+
+    -- Círculo principal
     local kx = math.floor(x + self:_valueToX(self.value))
-    paintCircle(bb, kx, cy, r, Blitbuffer.COLOR_WHITE)
-    paintCircle(bb, kx, cy, r - S(3), Blitbuffer.COLOR_BLACK)
+    paintCircle(bb, kx, cy, r, Blitbuffer.COLOR_BLACK)
+    paintCircle(bb, kx, cy, r - S(3), Blitbuffer.COLOR_WHITE)
 end
 
 function ProgressSlider:handleTap(ges)
     if not self.dimen or not ges.pos:intersectWith(self.dimen) then return false end
-    local v = self:_xToValue(ges.pos.x - self.dimen.x)
+    
+    local tap_x = ges.pos.x - self.dimen.x
+    local v = self:_xToValue(tap_x)
+    
+    -- Imán para bookmarks
+    if self.bookmarks then
+        for _, bmpage in ipairs(self.bookmarks) do
+            local bmx = self:_valueToX(bmpage)
+            if math.abs(tap_x - bmx) < S(20) then 
+                v = bmpage
+                break
+            end
+        end
+    end
+
     if v ~= self.value then 
         self.value = v
         if self.on_change then self.on_change(v) end 
@@ -267,12 +295,27 @@ function PageScrubber:init()
     }
     local slider_h = self._slider:getSize().h
 
+    self.tw_lib      = TextWidget:new{ text = "\u{F015}", face = Font:getFace("cfont", S(26)), fgcolor = Blitbuffer.COLOR_BLACK }
+    self.tw_fn       = TextWidget:new{ text = "⚙",   face = Font:getFace("cfont", S(26)), fgcolor = Blitbuffer.COLOR_BLACK }
+    self.tw_bm       = TextWidget:new{ text = "\u{F044}", face = Font:getFace("cfont", S(24)), fgcolor = Blitbuffer.COLOR_BLACK }
+    self.tw_toc      = TextWidget:new{ text = "☰",   face = Font:getFace("cfont", S(28)), fgcolor = Blitbuffer.COLOR_BLACK } 
+    self.tw_aa       = TextWidget:new{ text = "Aa",  face = Font:getFace("cfont", S(20)), fgcolor = Blitbuffer.COLOR_BLACK }
+    self.tw_x        = TextWidget:new{ text = "✕",   face = Font:getFace("cfont", S(26)), fgcolor = Blitbuffer.COLOR_BLACK }
+
+    self.tw_ch_l     = TextWidget:new{ text = "‹‹",  face = Font:getFace("cfont", S(32)), fgcolor = Blitbuffer.COLOR_BLACK }
+    self.tw_ch_r     = TextWidget:new{ text = "››",  face = Font:getFace("cfont", S(32)), fgcolor = Blitbuffer.COLOR_BLACK }
+
+    local font_ctrl  = Font:getFace("cfont", S(24))
+    self.tw_ctrl_prev = TextWidget:new{ text = "‹", face = font_ctrl, fgcolor = Blitbuffer.COLOR_BLACK }
+    self.tw_ctrl_mark = TextWidget:new{ text = "\u{F097}", face = font_ctrl, fgcolor = Blitbuffer.COLOR_BLACK }
+    self.tw_ctrl_next = TextWidget:new{ text = "›", face = font_ctrl, fgcolor = Blitbuffer.COLOR_BLACK }
+
     local p_top    = S(8)
     local spacing1 = S(3)
     local spacing2 = S(4)
-    local spacing3 = S(8)
-    local mark_sz  = S(40)
-    local p_bot    = S(8)
+    local spacing3 = S(10)
+    local mark_sz  = S(36)
+    local p_bot    = S(24)
 
     local bar_h = p_top + ch_h + spacing1 + info_h + spacing2 + slider_h + spacing3 + mark_sz + p_bot
     local bar_y = sh - bar_h
@@ -321,31 +364,16 @@ function PageScrubber:init()
     self.tw_fb_l = TextWidget:new{ text = "‹", face = Font:getFace("cfont", S(48)), fgcolor = Blitbuffer.COLOR_BLACK }
     self.tw_fb_r = TextWidget:new{ text = "›", face = Font:getFace("cfont", S(48)), fgcolor = Blitbuffer.COLOR_BLACK }
 
-    self.tw_lib      = TextWidget:new{ text = "\u{F015}", face = Font:getFace("cfont", S(26)), fgcolor = Blitbuffer.COLOR_BLACK }
-    self.tw_fn       = TextWidget:new{ text = "⚙",   face = Font:getFace("cfont", S(26)), fgcolor = Blitbuffer.COLOR_BLACK }
-    self.tw_bm       = TextWidget:new{ text = "\u{F0F6}", face = Font:getFace("cfont", S(22)), fgcolor = Blitbuffer.COLOR_BLACK }
-    self.tw_toc      = TextWidget:new{ text = "☰",   face = Font:getFace("cfont", S(28)), fgcolor = Blitbuffer.COLOR_BLACK }
-    self.tw_aa       = TextWidget:new{ text = "Aa",  face = Font:getFace("cfont", S(22)), fgcolor = Blitbuffer.COLOR_BLACK }
-    self.tw_x        = TextWidget:new{ text = "✕",   face = Font:getFace("cfont", S(28)), fgcolor = Blitbuffer.COLOR_BLACK }
-
-    self.tw_ch_l     = TextWidget:new{ text = "‹‹",  face = Font:getFace("cfont", S(32)), fgcolor = Blitbuffer.COLOR_BLACK }
-    self.tw_ch_r     = TextWidget:new{ text = "››",  face = Font:getFace("cfont", S(32)), fgcolor = Blitbuffer.COLOR_BLACK }
-
-    local font_ctrl  = Font:getFace("cfont", S(28))
-    self.tw_ctrl_prev = TextWidget:new{ text = "‹", face = font_ctrl, fgcolor = Blitbuffer.COLOR_BLACK }
-    self.tw_ctrl_mark = TextWidget:new{ text = "\u{F097}", face = font_ctrl, fgcolor = Blitbuffer.COLOR_BLACK }
-    self.tw_ctrl_next = TextWidget:new{ text = "›", face = font_ctrl, fgcolor = Blitbuffer.COLOR_BLACK }
-
     self._slider.on_change = function(v)
         self:_previewPage(v)
     end
 
     self:_updateTexts()
 
-    local top_sz    = S(44)
-    local spacing   = S(12)
-    local left_base = S(14)
-    local right_base = sw - S(14)
+    local top_sz    = S(46)
+    local spacing   = S(18)
+    local left_base = S(16)
+    local right_base = sw - S(16)
     local top_y     = top_bar_y + math.floor((top_h - top_sz) / 2)
 
     self._x_dimen   = Geom:new{ x = right_base - top_sz, y = top_y, w = top_sz, h = top_sz }
@@ -353,8 +381,9 @@ function PageScrubber:init()
     self._lib_dimen = Geom:new{ x = left_base, y = top_y, w = top_sz, h = top_sz }
     self._fn_dimen  = Geom:new{ x = self._lib_dimen.x + top_sz + spacing, y = top_y, w = top_sz, h = top_sz }
     self._bm_dimen  = Geom:new{ x = self._fn_dimen.x + top_sz + spacing, y = top_y, w = top_sz, h = top_sz }
-    self._toc_dimen = Geom:new{ x = self._bm_dimen.x + top_sz + spacing, y = top_y, w = top_sz, h = top_sz }
-    self._aa_dimen  = Geom:new{ x = self._toc_dimen.x + top_sz + spacing, y = top_y, w = top_sz, h = top_sz }
+    -- Inversión del orden entre Aa y ToC
+    self._aa_dimen  = Geom:new{ x = self._bm_dimen.x + top_sz + spacing, y = top_y, w = top_sz, h = top_sz }
+    self._toc_dimen = Geom:new{ x = self._aa_dimen.x + top_sz + spacing, y = top_y, w = top_sz, h = top_sz }
     
     local current_y = bar_y + p_top
     self.ch_y_pos = current_y
@@ -368,7 +397,7 @@ function PageScrubber:init()
 
     self.ctrl_y_pos = current_y
 
-    local side_sz = S(34)
+    local side_sz = S(30)
     local ctrl_sp = S(10)
     local total_ctrl_w = side_sz * 2 + mark_sz + ctrl_sp * 2
     local ctrl_x = math.floor((sw - total_ctrl_w) / 2)
@@ -418,7 +447,7 @@ function PageScrubber:init()
             logger.warn("page-scrubber: failed to clear DocCache:", err_clear)
         end
 
-        UIManager:scheduleIn(0.15, function()
+        UIManager:scheduleIn(self._is_comic and 0.5 or 0.15, function()
             if not self._closing then self:_updateGridPages() end
         end)
     end
@@ -437,14 +466,104 @@ function PageScrubber:_getChapter(page)
     return _("—")
 end
 
-function PageScrubber:_isCurrentPageBookmarked()
-    local bookmarked = false
-    pcall(function()
-        if self.ui.view and self.ui.view.dogear_visible then
-            bookmarked = true
+function PageScrubber:_getAllBookmarks()
+    local bms_map = {}
+    local tp = self._total_pages or 1
+
+    local function add_page(p)
+        if not p then return end
+        if type(p) == "number" and p >= 1 and p <= tp then
+            bms_map[math.floor(p)] = true
+        elseif type(p) == "string" then
+            local n = tonumber(p)
+            if n and n >= 1 and n <= tp then
+                bms_map[math.floor(n)] = true
+            elseif self.ui.document and self.ui.document.getPageFromXPointer then
+                pcall(function()
+                    local xp = self.ui.document:getPageFromXPointer(p)
+                    if type(xp) == "number" and xp >= 1 and xp <= tp then
+                        bms_map[math.floor(xp)] = true
+                    end
+                end)
+            end
         end
-    end)
-    return bookmarked
+    end
+
+    local function extract(list, strict_bookmark_only)
+        if type(list) ~= "table" then return end
+        for k, v in pairs(list) do
+            if type(v) == "table" then
+                local is_bm = (v.bookmark == true) or (v.type == "bookmark")
+                local has_drawer = v.drawer ~= nil 
+                
+                if not strict_bookmark_only or is_bm or (not has_drawer and not v.highlight) then
+                    add_page(v.page)
+                    add_page(v.pos0)
+                    add_page(v.xpointer)
+                end
+            else
+                if type(k) == "string" then add_page(k) end
+                if type(k) == "number" and (type(v) == "string" or type(v) == "boolean") then add_page(k) end
+                if type(v) == "number" then add_page(v) end
+                if type(v) == "string" then add_page(v) end
+            end
+        end
+    end
+
+    pcall(function() extract(self.ui.doc_props and self.ui.doc_props.bookmarks, false) end)
+    pcall(function() extract(self.ui.bookmark and self.ui.bookmark._bookmarks, false) end)
+    pcall(function() extract(self.ui.bookmark and self.ui.bookmark.bookmarks, false) end)
+    pcall(function() extract(self.ui.annotation and self.ui.annotation.annotations, true) end)
+
+    local bms = {}
+    for p, _ in pairs(bms_map) do table.insert(bms, p) end
+    return bms
+end
+
+function PageScrubber:_isCurrentPageBookmarked()
+    local bms = self:_getAllBookmarks()
+    for _, p in ipairs(bms) do
+        if tonumber(p) == tonumber(self._cur_page) then
+            return true
+        end
+    end
+    
+    local actual_bg_page = (self.ui.view and self.ui.view.state and self.ui.view.state.page) or self._origin_page
+    if self._cur_page == actual_bg_page then
+        if self.ui.view and self.ui.view.dogear_visible then
+            return true
+        end
+    end
+    
+    return false
+end
+
+function PageScrubber:_findPrevBookmark()
+    local bms = self:_getAllBookmarks()
+    local target = nil
+    for _, p in ipairs(bms) do
+        local num = tonumber(p)
+        if num and num < self._cur_page then
+            if not target or num > target then
+                target = num
+            end
+        end
+    end
+    return target
+end
+
+function PageScrubber:_findNextBookmark()
+    local bms = self:_getAllBookmarks()
+    local target = nil
+    for _, p in ipairs(bms) do
+        local num = tonumber(p)
+        if num and num > self._cur_page then
+            if not target or num < target then
+                target = num
+            end
+        end
+    end
+    return target
 end
 
 function PageScrubber:_updateTexts()
@@ -521,6 +640,8 @@ function PageScrubber:_updateGridPages()
     self._tasks_in_flight = #missing
     logger.info("page-scrubber: req batch", batch_id, "cur_page", self._cur_page, "missing", #missing)
 
+    local inter_request_delay = (self._is_comic and self._grid_batch_seq == 1) and 0.45 or 0.15
+
     local function requestOne(pos)
         if self._closing or self._grid_batch_id ~= batch_id then return end
 
@@ -551,12 +672,13 @@ function PageScrubber:_updateGridPages()
             advanced = true
             self._tasks_in_flight = math.max(0, self._tasks_in_flight - 1)
             if not self._closing then
-                UIManager:scheduleIn(0.15, function() requestOne(pos + 1) end)
+                UIManager:scheduleIn(inter_request_delay, function() requestOne(pos + 1) end)
             end
         end
 
         local retry_count = 0
-        local MAX_RETRIES = 1
+        local RETRY_DELAYS = { 0.3, 1.2, 3.0, 6.0 }
+        local MAX_RETRIES = #RETRY_DELAYS
 
         local function dispatch()
             if self._closing or self._grid_batch_id ~= batch_id then return end
@@ -594,7 +716,7 @@ function PageScrubber:_updateGridPages()
                                             and (self._grid_item_w + 1) or self._grid_item_w
                         
                         if not self._closing then
-                            UIManager:scheduleIn(0.3, dispatch)
+                            UIManager:scheduleIn(RETRY_DELAYS[retry_count], dispatch)
                         end
                         return
                     end
@@ -612,7 +734,7 @@ function PageScrubber:_updateGridPages()
                         logger.warn("page-scrubber: failed page", req_page)
                     end
                     
-                    if self._is_comic then
+                    if corrupted and self._is_comic then
                         pcall(function() DocCache:clear() end)
                     end
 
@@ -654,6 +776,42 @@ function PageScrubber:_setGridTile(idx, tile)
     slot.loading = false
 end
 
+function PageScrubber:_invalidateGridTilesForPage(page)
+    for idx, slot in pairs(self._grid_tiles) do
+        if slot.page == page then
+            slot.tile_bb = nil
+            slot.loading = true
+            slot.error = nil
+        end
+    end
+end
+
+function PageScrubber:_forceRefreshCurrentTile()
+    if self._grid_disabled or self._closing then return end
+    local page = self._cur_page
+    logger.info("page-scrubber: force refresh requested, page", page)
+
+    self._grid_flash_idx = 2
+    UIManager:setDirty(self, "ui", self:_gridSlotDimen(2))
+
+    UIManager:scheduleIn(0.12, function()
+        if self._closing then return end
+        self._grid_flash_idx = nil
+
+        self:_invalidateGridTilesForPage(page)
+
+        self._thumb_req_w = (self._thumb_req_w == self._grid_item_w)
+                            and (self._grid_item_w + 1) or self._grid_item_w
+
+        if self._is_comic then
+            pcall(function() DocCache:clear() end)
+        end
+
+        UIManager:setDirty(self, "ui", self._grid_dimen)
+        self:_updateGridPages()
+    end)
+end
+
 function PageScrubber:_paintGrid(bb)
     local nb_items = self._grid_cols * self._grid_rows
     for idx = 1, nb_items do
@@ -684,6 +842,10 @@ function PageScrubber:_paintGrid(bb)
             local is_cur = (idx == 2)
             local border = is_cur and S(3) or S(1)
             bb:paintBorder(rect.x, rect.y, rect.w, rect.h, border, Blitbuffer.COLOR_BLACK, 0)
+
+            if self._grid_flash_idx == idx then
+                bb:paintRect(rect.x, rect.y, rect.w, rect.h, Blitbuffer.COLOR_BLACK)
+            end
         end
     end
 end
@@ -752,10 +914,10 @@ function PageScrubber:_paintToImpl(bb, x, y)
     local td   = self._top_bar_dimen
 
     bb:paintRect(td.x, td.y, td.w, td.h, Blitbuffer.COLOR_WHITE)
-    bb:paintRect(td.x, td.y + td.h - S(2), td.w, S(2), Blitbuffer.COLOR_BLACK)
+    bb:paintRect(td.x, td.y + td.h - S(1), td.w, S(1), Blitbuffer.COLOR_BLACK)
 
     bb:paintRect(bd.x, bd.y, bd.w, bd.h, Blitbuffer.COLOR_WHITE)
-    bb:paintRect(bd.x, bd.y, bd.w, S(2), Blitbuffer.COLOR_BLACK)
+    bb:paintRect(bd.x, bd.y, bd.w, S(1), Blitbuffer.COLOR_BLACK)
 
     local title_strip_y = td.y + td.h
     local title_strip_h = self._grid_dimen.y - title_strip_y
@@ -783,9 +945,14 @@ function PageScrubber:_paintToImpl(bb, x, y)
         self.tw_fb_r:paintTo(bb, nd.x + math.floor((nd.w - ntsz.w) / 2), nd.y + math.floor((nd.h - ntsz.h) / 2))
     end
 
-    local function drawFloatingBtn(btn_id, dimen, tw)
+    local function drawFloatingBtn(btn_id, dimen, tw, is_disabled)
         local is_pressed = (self._pressed_btn == btn_id)
         local fg_color = is_pressed and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK
+        
+        if is_disabled then
+            fg_color = Blitbuffer.COLOR_LIGHT_GRAY
+        end
+        
         local cx = dimen.x + math.floor(dimen.w / 2)
         local cy = dimen.y + math.floor(dimen.h / 2)
         
@@ -803,8 +970,7 @@ function PageScrubber:_paintToImpl(bb, x, y)
         end
 
         if btn_id == "x" or btn_id == "bm" or btn_id == "toc" or btn_id == "aa" or btn_id == "fn" or btn_id == "lib" then
-            local bg_color = is_pressed and Blitbuffer.COLOR_BLACK or nil
-            fg_color = is_pressed and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK
+            local bg_color = (is_pressed and not is_disabled) and Blitbuffer.COLOR_BLACK or nil
             
             if bg_color then
                 paintRoundRect(bb, dimen.x, dimen.y, dimen.w, dimen.h, S(8), bg_color)
@@ -813,7 +979,7 @@ function PageScrubber:_paintToImpl(bb, x, y)
             tw.fgcolor = fg_color
             local tsz = tw:getSize()
             local y_offset = 0
-            if tw.text == "\u{F015}" or tw.text == "\u{F0F6}" then
+            if tw.text == "\u{F015}" or tw.text == "\u{F0F6}" or tw.text == "\u{F02D}" or tw.text == "\u{F044}" then
                 y_offset = S(1)
             end
             tw:paintTo(bb, cx - math.floor(tsz.w / 2), cy - math.floor(tsz.h / 2) + y_offset)
@@ -834,9 +1000,12 @@ function PageScrubber:_paintToImpl(bb, x, y)
     local is_marked = self:_isCurrentPageBookmarked()
     self.tw_ctrl_mark:setText(is_marked and "\u{F02E}" or "\u{F097}")
 
-    drawFloatingBtn("ctrl_prev", self._ctrl_prev_dimen, self.tw_ctrl_prev)
-    drawFloatingBtn("ctrl_mark", self._ctrl_mark_dimen, self.tw_ctrl_mark)
-    drawFloatingBtn("ctrl_next", self._ctrl_next_dimen, self.tw_ctrl_next)
+    local has_prev_bm = self:_findPrevBookmark() ~= nil
+    local has_next_bm = self:_findNextBookmark() ~= nil
+
+    drawFloatingBtn("ctrl_prev", self._ctrl_prev_dimen, self.tw_ctrl_prev, not has_prev_bm)
+    drawFloatingBtn("ctrl_mark", self._ctrl_mark_dimen, self.tw_ctrl_mark, false)
+    drawFloatingBtn("ctrl_next", self._ctrl_next_dimen, self.tw_ctrl_next, not has_next_bm)
 
     local csz_tw = self.tw_chapter:getSize()
     self.tw_chapter:paintTo(bb, math.floor((sw - csz_tw.w) / 2), self.ch_y_pos)
@@ -845,6 +1014,8 @@ function PageScrubber:_paintToImpl(bb, x, y)
     self.tw_info:paintTo(bb, math.floor((sw - isz.w) / 2), self.info_y_pos)
 
     local slider_x = pad * 2
+    
+    self._slider.bookmarks = self:_getAllBookmarks()
     self._slider.value = self._cur_page
     self._slider:paintTo(bb, slider_x, self.slider_y_pos)
 end
@@ -990,27 +1161,50 @@ function PageScrubber:onTap(_, ges)
     end
 
     if self._ctrl_prev_dimen and ges.pos:intersectWith(self._ctrl_prev_dimen) then
-        self:_flashAndDo("ctrl_prev", self._ctrl_prev_dimen, function()
-            self.ui:handleEvent(Event:new("GotoPreviousBookmarkFromPage", false))
-            local new_page = (self.ui.view and self.ui.view.state and self.ui.view.state.page) or self._cur_page
-            self:_previewPage(new_page)
-        end)
+        local target = self:_findPrevBookmark()
+        if target then
+            self:_flashAndDo("ctrl_prev", self._ctrl_prev_dimen, function()
+                self:_previewPage(target)
+            end)
+        end
         return true
     end
+    
     if self._ctrl_mark_dimen and ges.pos:intersectWith(self._ctrl_mark_dimen) then
+        local target_page = self._cur_page
         self:_flashAndDo("ctrl_mark", self._ctrl_mark_dimen, function()
-            self:_closeAndShow("ToggleBookmark")
+            self:_waitForIdle(function()
+                if self._closing then return end
+
+                self:_invalidateGridTilesForPage(target_page)
+
+                local ok, err = pcall(function()
+                    self.ui:handleEvent(Event:new("GotoPage", target_page))
+                    self.ui:handleEvent(Event:new("ToggleBookmark"))
+                end)
+                if not ok then
+                    logger.warn("page-scrubber: ToggleBookmark failed:", err)
+                end
+
+                if not self._closing then
+                    self:_updateGridPages()
+                    UIManager:setDirty(self, "ui", self.dimen)
+                end
+            end)
         end)
         return true
     end
+    
     if self._ctrl_next_dimen and ges.pos:intersectWith(self._ctrl_next_dimen) then
-        self:_flashAndDo("ctrl_next", self._ctrl_next_dimen, function()
-            self.ui:handleEvent(Event:new("GotoNextBookmarkFromPage", false))
-            local new_page = (self.ui.view and self.ui.view.state and self.ui.view.state.page) or self._cur_page
-            self:_previewPage(new_page)
-        end)
+        local target = self:_findNextBookmark()
+        if target then
+            self:_flashAndDo("ctrl_next", self._ctrl_next_dimen, function()
+                self:_previewPage(target)
+            end)
+        end
         return true
     end
+    
     if self._prev_ch_dimen and ges.pos:intersectWith(self._prev_ch_dimen) then
         self:_flashAndDo("ch_l", self._prev_ch_dimen, function() self:_prevChapter() end)
         return true
@@ -1065,9 +1259,9 @@ function PageScrubber:onTap(_, ges)
     end
 
     if self._grid_disabled and self._grid_dimen and ges.pos:intersectWith(self._grid_dimen) then
-        if ges.pos:intersectWith(self._fallback_prev_dimen) then
+        if ges.pos.intersectWith and ges.pos:intersectWith(self._fallback_prev_dimen) then
             self:_previewPage(self._cur_page - 1)
-        elseif ges.pos:intersectWith(self._fallback_next_dimen) then
+        elseif ges.pos.intersectWith and ges.pos:intersectWith(self._fallback_next_dimen) then
             self:_previewPage(self._cur_page + 1)
         else
             self:_gotoPage(self._cur_page)
@@ -1133,11 +1327,14 @@ function PageScrubber:onHold(_, ges)
         if ges.pos:intersectWith(self:_gridSlotDimen(3)) then
             self:_startHold("next"); return true
         end
+        if ges.pos:intersectWith(self:_gridSlotDimen(2)) then
+            self:_forceRefreshCurrentTile(); return true
+        end
     elseif self._grid_disabled and self._grid_dimen then
-        if ges.pos:intersectWith(self._fallback_prev_dimen) then
+        if ges.pos and ges.pos.intersectWith and ges.pos:intersectWith(self._fallback_prev_dimen) then
             self:_startHold("prev"); return true
         end
-        if ges.pos:intersectWith(self._fallback_next_dimen) then
+        if ges.pos and ges.pos.intersectWith and ges.pos:intersectWith(self._fallback_next_dimen) then
             self:_startHold("next"); return true
         end
     end
