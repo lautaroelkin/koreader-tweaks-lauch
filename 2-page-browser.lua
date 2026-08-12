@@ -305,17 +305,20 @@ function PageScrubber:init()
     self.tw_ch_l     = TextWidget:new{ text = "‹‹",  face = Font:getFace("cfont", S(32)), fgcolor = Blitbuffer.COLOR_BLACK }
     self.tw_ch_r     = TextWidget:new{ text = "››",  face = Font:getFace("cfont", S(32)), fgcolor = Blitbuffer.COLOR_BLACK }
 
-    local font_ctrl  = Font:getFace("cfont", S(24))
-    self.tw_ctrl_prev = TextWidget:new{ text = "‹", face = font_ctrl, fgcolor = Blitbuffer.COLOR_BLACK }
-    self.tw_ctrl_mark = TextWidget:new{ text = "\u{F097}", face = font_ctrl, fgcolor = Blitbuffer.COLOR_BLACK }
-    self.tw_ctrl_next = TextWidget:new{ text = "›", face = font_ctrl, fgcolor = Blitbuffer.COLOR_BLACK }
+    -- Aca reducimos el tamaño de los triangulitos para que queden finos
+    local font_ctrl_carets = Font:getFace("cfont", S(20))
+    local font_ctrl_mark   = Font:getFace("cfont", S(24))
+    
+    self.tw_ctrl_prev = TextWidget:new{ text = "\u{F0D9}", face = font_ctrl_carets, fgcolor = Blitbuffer.COLOR_BLACK }
+    self.tw_ctrl_mark = TextWidget:new{ text = "\u{F097}", face = font_ctrl_mark,   fgcolor = Blitbuffer.COLOR_BLACK }
+    self.tw_ctrl_next = TextWidget:new{ text = "\u{F0DA}", face = font_ctrl_carets, fgcolor = Blitbuffer.COLOR_BLACK }
 
     local p_top    = S(8)
     local spacing1 = S(3)
     local spacing2 = S(4)
     local spacing3 = S(10)
     local mark_sz  = S(36)
-    local p_bot    = S(24)
+    local p_bot    = S(12) 
 
     local bar_h = p_top + ch_h + spacing1 + info_h + spacing2 + slider_h + spacing3 + mark_sz + p_bot
     local bar_y = sh - bar_h
@@ -381,7 +384,6 @@ function PageScrubber:init()
     self._lib_dimen = Geom:new{ x = left_base, y = top_y, w = top_sz, h = top_sz }
     self._fn_dimen  = Geom:new{ x = self._lib_dimen.x + top_sz + spacing, y = top_y, w = top_sz, h = top_sz }
     self._bm_dimen  = Geom:new{ x = self._fn_dimen.x + top_sz + spacing, y = top_y, w = top_sz, h = top_sz }
-    -- Inversión del orden entre Aa y ToC
     self._aa_dimen  = Geom:new{ x = self._bm_dimen.x + top_sz + spacing, y = top_y, w = top_sz, h = top_sz }
     self._toc_dimen = Geom:new{ x = self._aa_dimen.x + top_sz + spacing, y = top_y, w = top_sz, h = top_sz }
     
@@ -689,6 +691,13 @@ function PageScrubber:_updateGridPages()
                 if not advanced and self._grid_batch_id == batch_id then
                     timed_out = true
                     logger.warn("page-scrubber: TIMEOUT page", req_page, "batch", batch_id)
+
+                    if slot then
+                        slot.loading = false
+                        slot.error = true
+                        UIManager:setDirty(self, "ui", self:_gridSlotDimen(idx))
+                    end
+
                     advance()
                 end
             end)
@@ -994,8 +1003,11 @@ function PageScrubber:_paintToImpl(bb, x, y)
     drawFloatingBtn("aa", self._aa_dimen, self.tw_aa)
     drawFloatingBtn("x", self._x_dimen, self.tw_x)
 
-    drawFloatingBtn("ch_l", self._prev_ch_dimen, self.tw_ch_l)
-    drawFloatingBtn("ch_r", self._next_ch_dimen, self.tw_ch_r)
+    local can_prev_ch = self.ui.toc and self.ui.toc:getPreviousChapter(self._cur_page) ~= nil
+    local can_next_ch = self.ui.toc and self.ui.toc:getNextChapter(self._cur_page) ~= nil
+
+    drawFloatingBtn("ch_l", self._prev_ch_dimen, self.tw_ch_l, not can_prev_ch)
+    drawFloatingBtn("ch_r", self._next_ch_dimen, self.tw_ch_r, not can_next_ch)
 
     local is_marked = self:_isCurrentPageBookmarked()
     self.tw_ctrl_mark:setText(is_marked and "\u{F02E}" or "\u{F097}")
