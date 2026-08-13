@@ -21,7 +21,7 @@ This patch allows you to quickly flip back and forth through the book, with the 
 * **Zen UI Plugin:** Inspired by the clean, minimal aesthetic of the **Zen UI** plugin (`anthonygress/zen_ui.koplugin`).
 * Built upon KOReader's core architecture and community browser components.
 
-# 📄 Page Scrubbers (Unmaintaine)
+# 📄 Page Scrubbers (Unmaintained)
 * [**2-page-scrubber.lua**](./2-page-scrubber.lua): Centered floating window with rounded corners, and quick-access buttons.
  * [**2-page-scrubber-alt.lua**](./2-page-scrubber-alt.lua): Bottom bar with progress, chapter info, and a top navigation toolbar. It's the simplest and more subtle page scrubber of the bunch. 
  
