@@ -19,7 +19,7 @@ This patch allows you to quickly flip back and forth through the book, with the 
 > You MUST disabled any old or duplicate `.lua` scrubber/browser files from your KOReader folder before installing this. 
 
 @ *Credits & Acknowledgments* 
-* **Zen UI Plugin:** Inspired by the clean, minimal aesthetic of the **Zen UI** plugin (`anthonygress/zen_ui.koplugin`).
+* inspired by **Zen UI Plugin:** (`anthonygress/zen_ui.koplugin`).
 * Built upon KOReader's core architecture and community browser components.
 
 # 📄 Page Scrubbers (Unmaintained)
