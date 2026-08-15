@@ -1342,17 +1342,30 @@ function PageScrubber:_gotoPage(page)
     local my_token = self._nav_token
     local target_page = self._cur_page
 
-    self:_waitForIdle(function()
-        if self._nav_token == my_token then
-            self.ui:handleEvent(Event:new("GotoPage", target_page))
-        end
+    -- Nota: como recién reseteamos _is_busy/_tasks_in_flight a mano (para no
+    -- quedar esperando una tanda de miniaturas vieja y sentirse "trabado"),
+    -- _waitForIdle acá resuelve casi al toque, no espera nada real. Eso está
+    -- bien para no repetir el lag de antes, pero un subproceso pesado puede
+    -- seguir vivo un rato del lado del sistema operativo aunque nuestro flag
+    -- ya diga false. Le sumamos un margen fijo chico antes de navegar de
+    -- verdad -- rápido, pero no instantáneo -- para darle aire. Sin esto,
+    -- el GotoPage real y la regeneración de miniaturas pueden pisar el mismo
+    -- contexto de documento y crashear (SIGSEGV) o dejar la página visual
+    -- "trabada" -- justo lo que reportaron en Reddit.
+    UIManager:scheduleIn(0.2, function()
+        if self._nav_token ~= my_token then return end
+        self.ui:handleEvent(Event:new("GotoPage", target_page))
+
+        UIManager:scheduleIn(0.3, function()
+            if self._closing then return end
+            if self._nav_token ~= my_token then return end
+            pcall(function() DocCache:clear() end)
+            if not self._grid_disabled then
+                self:_updateGridPages()
+            end
+            UIManager:setDirty(self, "ui", self.dimen)
+        end)
     end)
-
-    if not self._grid_disabled then
-        self:_updateGridPages()
-    end
-
-    UIManager:setDirty(self, "ui", self.dimen)
 end
 
 function PageScrubber:_previewPage(page, is_dragging)
@@ -1784,17 +1797,65 @@ function PageScrubber:onTap(_, ges)
                 if self._closing then return end
                 self:_invalidateGridTilesForPage(target_page)
 
+                local function finishToggle()
+                    local ok2, err2 = pcall(function()
+                        self.ui:handleEvent(Event:new("ToggleBookmark"))
+                    end)
+                    if not ok2 then logger.warn("page-scrubber: ToggleBookmark failed:", err2) end
+
+                    self:_invalidateBookmarksCache()
+
+                    -- ToggleBookmark repinta la página real (para mostrar/
+                    -- ocultar el dogear), lo cual dispara su propio render
+                    -- interno -- incluso cuando nosotros no llamamos a
+                    -- GotoPage. Si en ese mismo instante volvemos a pedir
+                    -- miniaturas de esa misma página, el hilo de fondo y el
+                    -- render real pisan el mismo contexto del documento y
+                    -- puede crashear o dejar la página "trabada" visualmente.
+                    -- Le damos un respiro y limpiamos el DocCache antes de
+                    -- refrescar el grid.
+                    UIManager:scheduleIn(0.3, function()
+                        if self._closing then return end
+                        pcall(function() DocCache:clear() end)
+                        self:_updateGridPages()
+                        UIManager:setDirty(self, "ui", self.dimen)
+                    end)
+                end
+
+                local already_there = self.ui.view and self.ui.view.state
+                                    and self.ui.view.state.page == target_page
+
+                if already_there then
+                    -- Ya estamos parados en esa página: NO pedimos GotoPage.
+                    -- Pedirle a KOReader que "navegue" a la misma página en
+                    -- la que ya está fuerza un re-render que puede crashear.
+                    finishToggle()
+                    return
+                end
+
                 local ok, err = pcall(function()
                     self.ui:handleEvent(Event:new("GotoPage", target_page))
-                    self.ui:handleEvent(Event:new("ToggleBookmark"))
                 end)
-                if not ok then logger.warn("page-scrubber: ToggleBookmark failed:", err) end
+                if not ok then logger.warn("page-scrubber: GotoPage failed:", err) end
 
-                self:_invalidateBookmarksCache()
-                if not self._closing then
-                    self:_updateGridPages()
-                    UIManager:setDirty(self, "ui", self.dimen)
+                -- GotoPage dispara el evento pero no es sincrónico: el
+                -- documento puede no estar parado en target_page todavía en
+                -- este mismo tick. Esperamos a que self.ui.view.state.page
+                -- realmente sea target_page (con un tope de intentos).
+                local attempts = 0
+                local function waitPageThenToggle()
+                    if self._closing then return end
+                    attempts = attempts + 1
+                    local actual_page = self.ui.view and self.ui.view.state and self.ui.view.state.page
+
+                    if actual_page == target_page or attempts > 40 then
+                        finishToggle()
+                    else
+                        UIManager:scheduleIn(0.03, waitPageThenToggle)
+                    end
                 end
+
+                waitPageThenToggle()
             end)
         end)
         return true
