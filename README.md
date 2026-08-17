@@ -14,8 +14,7 @@ This patch allows you to quickly flip back and forth through the book, with the 
 * **Physical Button Support**: Compatible with devices with physical buttons (D-Pad).
 * **Split-View Bookmarks Menu**: Split-screen bookmark manager. Features a dynamic, scrollable bookmark list on the right, a fully interactive high-res page preview on the left, and safely pins the origin page in a rounded bottom container (open it by holding the bookmark button or by touching the top-right corner of the center page of the grid).
 
-> **🌟 NEW: UI Scaling**
-> Change `CUSTOM_UI_SCALE = 1.0` inside the `.lua` file to resize the menu (e.g., `0.8` makes it 20% smaller).
+> **🌟 NEW: UI Scaling**: Just long-press the Settings (Gear) icon to bring up the slider to resize the menu (e.g., `0.8` makes it 20% smaller).
 > You MUST disabled any old or duplicate `.lua` scrubber/browser files from your KOReader folder before installing this. 
 
 @ *Credits & Acknowledgments* 
