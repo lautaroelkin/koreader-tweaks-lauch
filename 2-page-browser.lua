@@ -33,7 +33,7 @@
     - FORMATTED ENGLISH DATES, PANEL ICONS & DYNAMIC TAB COUNTS
     - 60/40 ASYMMETRIC SPLIT
     - INTEGRATED POLAROID STATUS (Dynamic text inside left card)
-    - CLEAN RIGHT MENU (Pág only, reduced S(15) font)
+    - CLEAN RIGHT MENU (Pág only, reduced S(13) font)
 ]]--
 
 local Blitbuffer      = require("ffi/blitbuffer")
@@ -755,6 +755,35 @@ function PageScrubber:_updateGridPages()
     self._pending_grid_update = false
     local thumbnail = self.ui.thumbnail
 
+    if self._view_mode == "split" then
+        local sw, sh = Screen:getWidth(), Screen:getHeight()
+        local available_h = self._grid_dimen.h
+        local status_h = S(32)
+        local fx_h = S(56)
+        local gap_x = S(28)
+        local max_pr_w_allowed = math.floor((sw - S(40) - gap_x) * 0.60)
+        local target_pr_w = max_pr_w_allowed
+        local target_pr_h = math.floor(target_pr_w * (sh / sw))
+        local max_left_h_allowed = available_h - S(10)
+        
+        if target_pr_h + status_h > max_left_h_allowed then
+            target_pr_h = max_left_h_allowed - status_h
+            target_pr_w = math.floor(target_pr_h * (sw / sh))
+        end
+        
+        local left_total_h = target_pr_h + status_h
+        local available_menu_h = left_total_h - S(12) - fx_h
+        
+        if available_menu_h < S(100) then
+            left_total_h = S(100) + S(12) + fx_h
+            target_pr_h = left_total_h - status_h
+            target_pr_w = math.floor(target_pr_h * (sw / sh))
+        end
+        
+        self._thumb_req_split_w = target_pr_w
+        self._thumb_req_split_h = target_pr_h
+    end
+
     self._grid_batch_seq = self._grid_batch_seq + 1
     local batch_id = "page_scrubber_grid_" .. self._grid_instance_id .. "_" .. tostring(self._grid_batch_seq)
     self._grid_batch_id = batch_id
@@ -1124,10 +1153,10 @@ function PageScrubber:_paintSplitView(bb, title_strip_y, title_strip_h)
     local available_h = gd.h
     local status_h = S(32) 
     local fx_h = S(56)
-    local gap_x = S(16)
+    local gap_x = S(28)
     local target_gap = S(12)
     
-    local max_pr_w_allowed = math.floor((sw - S(24) - gap_x) * 0.60)
+    local max_pr_w_allowed = math.floor((sw - S(40) - gap_x) * 0.60)
     local target_pr_w = max_pr_w_allowed
     local target_pr_h = math.floor(target_pr_w * (sh / sw))
     
@@ -1192,7 +1221,10 @@ function PageScrubber:_paintSplitView(bb, title_strip_y, title_strip_h)
     local tab_sp = S(8)
     local tab_h = S(34)
     local actual_top_space = top_box_y - title_strip_y
-    local tab_draw_y = title_strip_y + math.floor((actual_top_space - tab_h) / 2)
+    
+    local ratio = (actual_top_space > tab_h * 1.5) and 0.8 or 0.5
+    local tab_draw_y = title_strip_y + math.floor((actual_top_space - tab_h) * ratio)
+    
     local current_tab_x = pr_x
     
     local function drawTab(id, tw)
@@ -1211,7 +1243,7 @@ function PageScrubber:_paintSplitView(bb, title_strip_y, title_strip_h)
         end
         
         tw.fgcolor = fg
-        local y_offset = -S(1)
+        local y_offset = 0
         tw:paintTo(bb, current_tab_x + math.floor((tab_w - tsz.w)/2), tab_draw_y + math.floor((tab_h - tsz.h)/2) + y_offset)
         
         local dimen = Geom:new{ x = current_tab_x, y = tab_draw_y, w = tab_w, h = tab_h }
@@ -1422,7 +1454,7 @@ function PageScrubber:_paintSplitView(bb, title_strip_y, title_strip_h)
         paintRoundRect(bb, lm_x + S(4), fx_y + S(4), lm_w - S(8), fx_h - S(8), S(8), Blitbuffer.COLOR_BLACK)
     end
     
-    local tw_pg_f = TextWidget:new{ text = "Pág. " .. fixed_page, face = Font:getFace("cfont", S(16)), fgcolor = fg_f }
+    local tw_pg_f = TextWidget:new{ text = "Pág. " .. fixed_page, face = Font:getFace("cfont", S(14)), fgcolor = fg_f }
     local pt_sz = tw_pg_f:getSize()
     tw_pg_f:paintTo(bb, lm_x + S(15), fx_y + math.floor((fx_h - pt_sz.h) / 2))
     tw_pg_f:free()
@@ -1439,7 +1471,7 @@ function PageScrubber:_paintSplitView(bb, title_strip_y, title_strip_h)
     self._split_fixed_toggle_dimen = Geom:new{ x = btn_xf - S(10), y = fx_y, w = bsz_f.w + S(20), h = fx_h }
 
     -- ==========================================
-    -- 5. RENDERIZADO DEL MENÚ DERECHO (PÁG. SOLA EN S(15))
+    -- 5. RENDERIZADO DEL MENÚ DERECHO (PÁG. SOLA EN S(13))
     -- ==========================================
     local active_list = {}
     if self._active_tab == "bookmarks" then active_list = self:_getAllBookmarks()
@@ -1531,8 +1563,8 @@ function PageScrubber:_paintSplitView(bb, title_strip_y, title_strip_h)
             
             local text_max_w_menu = lm_w - rm_sz.w - S(30)
             
-            -- Dibujo centrado sólo de la página con tamaño S(15)
-            local tw_pg = TextWidget:new{ text = "Pág. " .. p, face = Font:getFace("cfont", S(15)), fgcolor = fg_r, max_width = text_max_w_menu }
+            -- Dibujo centrado sólo de la página con tamaño S(13)
+            local tw_pg = TextWidget:new{ text = "Pág. " .. p, face = Font:getFace("cfont", S(13)), fgcolor = fg_r, max_width = text_max_w_menu }
             local tw_pg_sz = tw_pg:getSize()
             local pg_y = current_row_y + math.floor((row_h - tw_pg_sz.h) / 2)
             
@@ -2379,6 +2411,12 @@ function PageScrubber:onHold(_, ges)
             self._view_mode = "grid"
             self:_clearGridTiles()
             self:_previewPage(fixed_page, false)
+            return true
+        end
+
+        if self._split_preview_dimen and ges.pos:intersectWith(self._split_preview_dimen) then
+            self:_gotoPage(self._cur_page)
+            self:_closeStay()
             return true
         end
 
