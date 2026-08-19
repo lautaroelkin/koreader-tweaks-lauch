@@ -45,5 +45,6 @@ This patch allows you to quickly flip back and forth through the book, with the 
   **Setup & Activation**
  1. Open a book in KOReader.
  2. Go to **Settings** (⚙️) > **Gestures** > **Reader**.
- 3. Choose your preferred gesture and assign it to **Page Scrubber**
+ 3. 3. Choose your preferred gesture and bind it to any of the 3 available actions: **Page Scrubber** (Default Grid), **Page Scrubber (Menú / Dividido)** (Direct Split View), or **Page Scrubber (Highlights)** (Direct Highlights View).
+    4. 
 > You can only lunch one patch of this collection at a time, if you try to activate more than one it won't work.
