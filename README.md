@@ -27,11 +27,11 @@ This patch allows you to quickly flip back and forth through the book, with the 
  
    
 ## 📱 Screenshots: 
-| Vista Principal | Modo Dividido |
+| Main Grid View | Split Screen View |
 | :---: | :---: |
-| <img src="Screenshot_2026-08-19-01-37-32-181_org.koreader.launcher.jpg" width="400"/> | <img src="Screenshot_2026-08-19-01-11-42-402_org.koreader.launcher.jpg" width="400"/> |
-| **Pestañas / Menú** | **Detalle de escala (Compacto)** |
-| <img src="Screenshot_2026-08-19-01-12-22-868_org.koreader.launcher.jpg" width="400"/> | <img src="Screenshot_2026-08-19-01-38-32-855_org.koreader.launcher.jpg" width="230"/> |
+| <img src="Screenshot_2026-08-19-01-37-32-181_org.koreader.launcher.jpg" width="380" alt="Main Grid View"/> | <img src="Screenshot_2026-08-19-01-11-42-402_org.koreader.launcher.jpg" width="380" alt="Split View"/> |
+| **Smart Tabs & Filters** | **3 Assignable Gesture Actions** |
+| <img src="Screenshot_2026-08-19-01-12-22-868_org.koreader.launcher.jpg" width="380" alt="Smart Tabs & Filters"/> | <img src="Screenshot_2026-08-19-01-38-32-855_org.koreader.launcher.jpg" width="380" alt="3 Assignable Gesture Actions"/> |
 
 
 ## ⚙️ Installation
