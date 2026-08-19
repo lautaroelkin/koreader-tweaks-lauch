@@ -7,10 +7,9 @@ This patch allows you to quickly flip back and forth through the book, with the 
 **Get patch: [**2-page-browser.lua**](./2-page-browser.lua)**
 
 **Features**:
-* **3-Page Thumbnail Grid:** Displays a live preview of the previous, current, and next pages side by side, keeping the active page perfectly centered.
-* **E-Ink Safe Navigation:** Features a slow, controlled hold-to-repeat page turning speed to prevent ghosting loops and screen lag.
-* **Quick Access Toolbar:** Top navigation bar with direct buttons for Home, Settings, Bookmarks, Table of Contents, and Font Options. 
-* **Progress & Info Bar:** Includes an interactive slider, chapter title, and a precise percentage/page counter. You can algo go to the next/previous chapter with the (>>/<<) buttons next to the chapter title.
+* **3-Page Thumbnail Grid:** Displays a live preview of the previous, current, and next pages side by side, keeping the active page perfectly centered. Features a controlled hold-to-repeat page turning.
+* **Quick Access Toolbar:** Top navigation bar with direct buttons for Home, Settings, Bookmarks, Table of Contents. 
+* **Progress & Info Bar:** Includes an interactive slider, chapter title, and a precise percentage/page counter. You can algo go to the next/previous chapter with the buttons next to the chapter title.
 * **Physical Button Support**: Compatible with devices with physical buttons (D-Pad).
 * **Split-View Bookmarks Menu**: Split-screen bookmark, highlight and note manager. Features a dynamic, scrollable bookmark list on the right, a fully interactive high-res page preview on the left, and safely pins the origin page in a rounded bottom container.
 
@@ -45,6 +44,6 @@ This patch allows you to quickly flip back and forth through the book, with the 
   **Setup & Activation**
  1. Open a book in KOReader.
  2. Go to **Settings** (⚙️) > **Gestures** > **Reader**.
- 3. 3. Choose your preferred gesture and bind it to any of the 3 available actions: **Page Scrubber** (Default Grid), **Page Scrubber (Menú / Dividido)** (Direct Split View), or **Page Scrubber (Highlights)** (Direct Highlights View).
-    4. 
+ 3. Choose your preferred gesture and bind it to any of the 3 available actions: **Page Scrubber** (Default Grid), **Page Scrubber (Menú / Dividido)** (Direct Split View), or **Page Scrubber (Highlights)** (Direct Highlights View).
+
 > You can only lunch one patch of this collection at a time, if you try to activate more than one it won't work.
