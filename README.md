@@ -15,16 +15,7 @@ This patch allows you to quickly flip back and forth through the book, with the 
 
 > **🌟 NEW: UI Scaling**: Just long-press the Settings (Gear) icon to bring up the slider to resize the menu (e.g., `0.8` makes it 20% smaller).
 > You MUST disabled any old or duplicate `.lua` scrubber/browser files from your KOReader folder before installing this. 
-
-@ *Credits & Acknowledgments* 
-* inspired by **Zen UI Plugin:** (`anthonygress/zen_ui.koplugin`).
-* Built upon KOReader's core architecture and community browser components.
-
-# 📄 Page Scrubbers (Unmaintained)
-* [**2-page-scrubber.lua**](./2-page-scrubber.lua): Centered floating window with rounded corners, and quick-access buttons.
- * [**2-page-scrubber-alt.lua**](./2-page-scrubber-alt.lua): Bottom bar with progress, chapter info, and a top navigation toolbar. It's the simplest and more subtle page scrubber of the bunch. 
  
-   
 ## 📱 Screenshots: 
 | Main Grid View | Split Screen View |
 | :---: | :---: |
@@ -33,7 +24,9 @@ This patch allows you to quickly flip back and forth through the book, with the 
 | <img src="Screenshot_2026-08-19-01-12-22-868_org.koreader.launcher.jpg" width="100%" alt="Smart Tabs & Filters"/> | <img src="Screenshot_2026-08-19-01-38-32-855_org.koreader.launcher.jpg" width="100%" alt="3 Assignable Gesture Actions"/> |
 
 
-
+# 📄 Page Scrubbers (Unmaintained)
+* [**2-page-scrubber.lua**](./2-page-scrubber.lua): Centered floating window with rounded corners, and quick-access buttons.
+ * [**2-page-scrubber-alt.lua**](./2-page-scrubber-alt.lua): Bottom bar with progress, chapter info, and a top navigation toolbar. It's the simplest and more subtle page scrubber of the bunch. 
 
 ## ⚙️ Installation
  1. Download the .lua file.
