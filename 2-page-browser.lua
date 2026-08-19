@@ -70,7 +70,7 @@ local Screen = Device.screen
 -- =========================================================================
 -- USER CONFIGURATION
 local SETTING_KEY = "page_scrubber_ui_scale"
-local DEFAULT_UI_SCALE = 1.23
+local DEFAULT_UI_SCALE = 1
 
 local CUSTOM_UI_SCALE = (G_reader_settings and G_reader_settings:readSetting(SETTING_KEY)) or DEFAULT_UI_SCALE
 -- =========================================================================
