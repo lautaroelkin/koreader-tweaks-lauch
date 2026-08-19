@@ -27,13 +27,24 @@ This patch allows you to quickly flip back and forth through the book, with the 
  
    
 ## 📱 Screenshots: 
-<p align="center">
-  <img src="Screenshot_2026-08-05-01-00-43-539_org.koreader.launcher.jpg" width="45%" alt="Page Browser Preview" />
-  <img src="Screenshot_2026-07-31-00-12-58-523_org.koreader.launcher.jpg" width="45%" alt="Page Scrubber Preview" />
-</p>
+<div align="center">
 
-> **Page Browser and Page Scrubber**
- 
+  <!-- FOTO PRINCIPAL DESTACADA -->
+  <img src="Screenshot_2026-08-19-01-37-32-181_org.koreader.launcher.jpg" width="85%" alt="Vista Principal" />
+  
+  <br><br>
+
+  <!-- FILA DE FOTOS MEDIANAS -->
+  <img src="Screenshot_2026-08-19-01-11-42-402_org.koreader.launcher.jpg" width="48%" />
+  <img src="Screenshot_2026-08-19-01-12-22-868_org.koreader.launcher.jpg" width="48%" />
+
+  <br><br>
+
+  <!-- FOTO DE DETALLE CHIQUITA -->
+  <img src="Screenshot_2026-08-19-01-38-32-855_org.koreader.launcher.jpg" width="32%" alt="Detalle" />
+
+</div>
+
 ## ⚙️ Installation
  1. Download the .lua file.
  2. Place it in your KOReader user plugins/patches folder.
