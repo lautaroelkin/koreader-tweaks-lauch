@@ -1,4 +1,3 @@
-
 --[[
     page_scrubber.koplugin/main.lua
 ]]--
@@ -32,9 +31,9 @@ end
 -- ==========================================
 function PageScrubberPlugin:init()
     Dispatcher:registerAction("page_scrubber_grid_action", { category = "none", event = "PageScrubberGrid", title = "Page Scrubber: Grid", reader = true })
-    Dispatcher:registerAction("page_scrubber_simple_grid_action", { category = "none", event = "PageScrubberSimpleGrid", title = "Page Scrubber: Simple Grid", reader = true })
+    Dispatcher:registerAction("page_scrubber_simple_grid_action", { category = "none", event = "PageScrubberSimpleGrid", title = "Page Scrubber: Simple grid", reader = true })
     Dispatcher:registerAction("page_scrubber_menu_bm_action", { category = "none", event = "PageScrubberMenuBM", title = "Page Scrubber: Menu (BM)", reader = true })
-    Dispatcher:registerAction("page_scrubber_menu_hl_action", { category = "none", event = "PageScrubberMenuHL", title = "Page Scrubber: Menu (Highlights)", reader = true })
+    Dispatcher:registerAction("page_scrubber_menu_hl_action", { category = "none", event = "PageScrubberMenuHL", title = "Page Scrubber: Menu (highlights)", reader = true })
 
     if self.ui.menu then self.ui.menu:registerToMainMenu(self) end
 end
@@ -116,7 +115,7 @@ function PageScrubberPlugin:addToMainMenu(menu_items)
                 callback = function() self.ui:onPageScrubberGrid() end,
             },
             {
-                text = "Page Scrubber: Simple Grid",
+                text = "Page Scrubber: Simple grid",
                 callback = function() self.ui:onPageScrubberSimpleGrid() end,
             },
             {
@@ -124,7 +123,7 @@ function PageScrubberPlugin:addToMainMenu(menu_items)
                 callback = function() self.ui:onPageScrubberMenuBM() end,
             },
             {
-                text = "Page Scrubber: Menu (Highlights)",
+                text = "Page Scrubber: Menu (highlights)",
                 callback = function() self.ui:onPageScrubberMenuHL() end,
             }
         }
