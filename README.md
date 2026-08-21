@@ -1,42 +1,40 @@
-# KOReader Custom Patches 📚
-Custom Lua patches for **KOReader** optimized for E-ink devices.
+# KOReader 📚
+Custom Lua patches and plugins for **KOReader** optimized for E-ink devices.
 
-# 📖 Page Browser 
-This patch allows you to quickly flip back and forth through the book, with the option to easily return to your original page using the 'x' button or stay on the new page. You can also use the interactive progress bar and bookmark browser. Streamlined, E-ink optimized, based on KOReader's browser architecture and inspired by the native Kindle page picker experience. Compatible with EPUB, CBZ, and PDFs!
+# 📖 Page Scrubber Plugin! 
+This plugin allows you to quickly flip back and forth through the book, with the option to easily return to your original page using the 'x' button or stay on the new page. You can also use the interactive progress bar and bookmark browser. Streamlined, E-ink optimized, based on KOReader's browser architecture and inspired by the native Kindle page picker experience. Compatible with EPUB, CBZ, and PDFs!
    
-**Get patch: [**2-page-browser.lua**](./2-page-browser.lua)**
-
 **Features**:
-* **3-Page Thumbnail Grid:** Displays a live preview of the previous, current, and next pages side by side, keeping the active page perfectly centered. Features a controlled hold-to-repeat page turning.
-* **Quick Access Toolbar:** Top navigation bar with direct buttons for Home, Settings, Bookmarks, Table of Contents. 
-* **Progress & Info Bar:** Includes an interactive slider, chapter title, and a precise percentage/page counter. You can algo go to the next/previous chapter with the buttons next to the chapter title.
-* **Physical Button Support**: Compatible with devices with physical buttons (D-Pad).
-* **Split-View Bookmarks Menu**: Split-screen bookmark, highlight and note manager. Features a dynamic, scrollable bookmark list on the right, a fully interactive high-res page preview on the left, and safely pins the origin page in a rounded bottom container.
+* **Thumbnail Grids:** Live 3-page preview with hold-to-repeat page turning, plus a minimalist distraction-free "Simple Grid" mode.
+* **Advanced Navigation:** Interactive progress slider, chapter-skip buttons, a quick-access top toolbar, and physical D-Pad support.
+* **Split-View Annotations (NEW):** A beautiful split-screen manager for Bookmarks, Highlights, and Notes, featuring a live high-res page preview and smart highlight filters.
+* **Robust UI Scaling (NEW):** Auto-adapting layout that prevents crashes or overlapping at any scale (long-press the Gear icon to resize).
+* **Native Integration:** Launch all widgets and access settings directly from KOReader's native top menu. 
 
-> **🌟 NEW: UI Scaling**: Just long-press the Settings (Gear) icon to bring up the slider to resize the menu (e.g., `0.8` makes it 20% smaller).
-> You MUST disabled any old or duplicate `.lua` scrubber/browser files from your KOReader folder before installing this. 
+> ⚠️ **IMPORTANT:** You MUST delete any old or duplicate `.lua` scrubber/browser files from your KOReader plugins/patches folder before installing this new version.
  
 ## 📱 Screenshots: 
-| Main Grid View | Split Screen View |
+| Main Grid View | Simple Grid View |
 | :---: | :---: |
-| <img src="Screenshot_2026-08-19-01-37-32-181_org.koreader.launcher.jpg" width="100%" alt="Main Grid View"/> | <img src="Screenshot_2026-08-19-01-11-42-402_org.koreader.launcher.jpg" width="100%" alt="Split Screen View"/> |
-| **Smart Tabs & Filters** | **3 Assignable Gesture Actions** |
-| <img src="Screenshot_2026-08-19-01-12-22-868_org.koreader.launcher.jpg" width="100%" alt="Smart Tabs & Filters"/> | <img src="Screenshot_2026-08-19-01-38-32-855_org.koreader.launcher.jpg" width="100%" alt="3 Assignable Gesture Actions"/> |
-
+| <img src="images/Screenshot_2026-08-21-19-14-04-049_org.koreader.launcher.jpg" width="100%" alt="Main Grid View"/> | <img src="images/Screenshot_2026-08-21-19-17-41-683_org.koreader.launcher.jpg" width="100%" alt="Simple Grid View"/> |
+| **Split Screen: Highlights** | **Split Screen: Bookmarks** |
+| <img src="images/Screenshot_2026-08-21-19-17-02-314_org.koreader.launcher.jpg" width="100%" alt="Highlights Menu"/> | <img src="images/Screenshot_2026-08-21-19-21-14-748_org.koreader.launcher.jpg" width="100%" alt="Bookmarks Menu"/> |
 
 # 📄 Old Page Scrubbers (Unmaintained)
 * [**2-page-scrubber.lua**](./2-page-scrubber.lua): Centered floating window with rounded corners, and quick-access buttons.
  * [**2-page-scrubber-alt.lua**](./2-page-scrubber-alt.lua): Bottom bar with progress, chapter info, and a top navigation toolbar. It's the simplest and more subtle page scrubber of the bunch. 
 
 ## ⚙️ Installation
- 1. Download the .lua file.
- 2. Place it in your KOReader user plugins/patches folder.
- 3. Restart KOReader.
+ 1. Go to the **Releases** page and download the `.zip` file of the latest version.
+ 2. Extract the archive. You will get a folder named `page_scrubber.koplugin`.
+ 3. Place that entire folder in your KOReader user plugins directory (usually `koreader/plugins/`).
+ 4. Restart KOReader.
    
-    
-  **Setup & Activation**
+## 🚀 Setup & Activation
  1. Open a book in KOReader.
  2. Go to **Settings** (⚙️) > **Gestures** > **Reader**.
- 3. Choose your preferred gesture and bind it to any of the 3 available actions: **Page Scrubber** (Default Grid), **Page Scrubber (Menú / Dividido)** (Direct Split View), or **Page Scrubber (Highlights)** (Direct Highlights View).
+ 3. Choose your preferred gesture and bind it to any of the 4 available actions: **Page browser: Grid**, **Page browser: Simple grid**, **Page browser: Menu (BM)**, or **Page browser: Menu (highlights)**.
 
-> You can only lunch one patch of this collection at a time, if you try to activate more than one it won't work.
+> 💡 **Tip:** You don't *have* to use gestures! You can also launch all 4 views and access the new configuration options directly from KOReader's top menu.
+
+> You can only run one patch of this collection at a time; if you try to activate more than one, it won't work.
