@@ -12,6 +12,8 @@ This plugin allows you to quickly flip back and forth through the book, with the
 * **Native Integration:** Launch all widgets and access settings directly from KOReader's native top menu. 
 
 > ⚠️ **IMPORTANT:** You MUST delete any old or duplicate `.lua` scrubber/browser files from your KOReader plugins/patches folder before installing this new version.
+
+Get the [plugin](https://github.com/lautaroelkin/koreader-tweaks-lauch/releases/tag/v1.0.0)
  
 ## 📱 Screenshots: 
 | Main Grid View | Simple Grid View |
